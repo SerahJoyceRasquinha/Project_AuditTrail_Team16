@@ -1,0 +1,97 @@
+import 'dotenv/config';
+
+/**
+ * Configuration is read exactly once, here (roadmap 9.3).
+ *
+ * No other module reads `process.env`; they receive config through dependency
+ * injection. That is what makes the whole backend testable without setting
+ * environment variables in the test process.
+ */
+function readString(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') {
+    if (fallback === undefined) {
+      throw new Error(`Missing required environment variable: ${name}`);
+    }
+    return fallback;
+  }
+  return raw;
+}
+
+function readInt(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Environment variable ${name} must be an integer, received '${raw}'.`);
+  }
+  return parsed;
+}
+
+function readBool(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
+}
+
+export function loadConfig(overrides = {}) {
+  const config = {
+    nodeEnv: readString('NODE_ENV', 'development'),
+    port: readInt('PORT', 4000),
+
+    /**
+     * PERSISTENCE=mongo   -> real MongoDB (production / normal development)
+     * PERSISTENCE=memory  -> in-process store implementing the same driver
+     *                        surface. Lets the whole system (including the
+     *                        worker and every test) run with no database
+     *                        installed. See docs/database/DATABASE.md.
+     */
+    persistence: readString('PERSISTENCE', 'mongo'),
+    mongodbUri: readString('MONGODB_URI', 'mongodb://127.0.0.1:27017'),
+    mongodbDatabase: readString('MONGODB_DATABASE', 'audit_trail'),
+
+    logLevel: readString('LOG_LEVEL', 'info'),
+    corsOrigin: readString('CORS_ORIGIN', 'http://localhost:5173'),
+
+    /** Worker (roadmap 12.3). Polling + checkpoint, per roadmap 26. */
+    worker: {
+      enabled: readBool('WORKER_ENABLED', true),
+      /** true = run inside the API process; false = run `npm run start:worker`. */
+      inProcess: readBool('WORKER_IN_PROCESS', true),
+      pollIntervalMs: readInt('WORKER_POLL_INTERVAL_MS', 500),
+      batchSize: readInt('WORKER_BATCH_SIZE', 200),
+      maxRetries: readInt('WORKER_MAX_RETRIES', 5),
+      retryBackoffMs: readInt('WORKER_RETRY_BACKOFF_MS', 250),
+      name: readString('WORKER_NAME', 'shipment-projection-worker'),
+    },
+
+    /** Roadmap 16 - rate limiting on the command surface. */
+    rateLimit: {
+      enabled: readBool('RATE_LIMIT_ENABLED', true),
+      windowMs: readInt('RATE_LIMIT_WINDOW_MS', 60_000),
+      maxRequests: readInt('RATE_LIMIT_MAX_REQUESTS', 300),
+    },
+
+    /** Roadmap 17 - guard against unbounded replay/pagination. */
+    limits: {
+      maxEventsPerQuery: readInt('MAX_EVENTS_PER_QUERY', 5000),
+      maxShipmentsPerPage: readInt('MAX_SHIPMENTS_PER_PAGE', 100),
+    },
+
+    ...overrides,
+  };
+
+  if (!['mongo', 'memory'].includes(config.persistence)) {
+    throw new Error(`PERSISTENCE must be 'mongo' or 'memory', received '${config.persistence}'.`);
+  }
+
+  return Object.freeze(config);
+}
+
+export const COLLECTIONS = Object.freeze({
+  events: 'shipment_events',
+  readModel: 'shipment_read_model',
+  checkpoints: 'projection_checkpoints',
+  counters: 'counters',
+  deadLetters: 'projection_dead_letters',
+});

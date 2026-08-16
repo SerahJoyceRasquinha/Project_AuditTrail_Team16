@@ -1,0 +1,116 @@
+/**
+ * The single place the frontend talks to the backend.
+ *
+ * Two things it does that matter beyond wrapping fetch:
+ *
+ *  - it turns the backend's structured error envelope into a real `ApiError`
+ *    carrying `code`, `status` and `details`, so components can branch on
+ *    `error.code === 'CONCURRENCY_CONFLICT'` rather than matching on message
+ *    text;
+ *  - every call accepts an `AbortSignal`, which is what keeps the time scrubber
+ *    from rendering the results of a request the user has already scrubbed past.
+ */
+
+const BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? '';
+
+export class ApiError extends Error {
+  constructor(message, { status, code, details, correlationId } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status ?? 0;
+    this.code = code ?? 'NETWORK_ERROR';
+    this.details = details ?? null;
+    this.correlationId = correlationId ?? null;
+  }
+
+  get isConflict() {
+    return this.code === 'CONCURRENCY_CONFLICT';
+  }
+
+  get isNotFound() {
+    return this.code === 'AGGREGATE_NOT_FOUND' || this.status === 404;
+  }
+}
+
+async function request(path, { method = 'GET', body, signal } = {}) {
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    // An aborted request is a normal part of the scrubber's life, not a failure
+    // to report to the user, so it is rethrown untouched for callers to ignore.
+    if (error.name === 'AbortError') throw error;
+    throw new ApiError('Could not reach the Audit Trail API. Is the backend running?', {
+      status: 0,
+      code: 'NETWORK_ERROR',
+    });
+  }
+
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const envelope = payload?.error ?? {};
+    throw new ApiError(envelope.message ?? `Request failed with status ${response.status}.`, {
+      status: response.status,
+      code: envelope.code,
+      details: envelope.details,
+      correlationId: payload?.correlationId ?? response.headers.get('x-correlation-id'),
+    });
+  }
+
+  return payload;
+}
+
+// --- Queries (read side) ----------------------------------------------------
+
+export const listShipments = (params = {}, signal) => {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.state) query.set('state', params.state);
+  if (params.search) query.set('search', params.search);
+  const suffix = query.toString() ? `?${query}` : '';
+  return request(`/api/shipments${suffix}`, { signal });
+};
+
+export const getShipment = (shipmentId, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}`, { signal });
+
+export const getShipmentEvents = (shipmentId, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}/events`, { signal });
+
+export const getHistoricalState = (shipmentId, at, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}/state?at=${encodeURIComponent(at)}`, { signal });
+
+export const getSensorSeries = (shipmentId, at, signal) => {
+  const suffix = at ? `?at=${encodeURIComponent(at)}` : '';
+  return request(`/api/shipment/${encodeURIComponent(shipmentId)}/sensors${suffix}`, { signal });
+};
+
+export const getIntegrity = (shipmentId, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}/integrity`, { signal });
+
+export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal });
+
+export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });
+
+// --- Commands (write side) --------------------------------------------------
+
+export const createShipment = (command) =>
+  request('/api/shipment/create', { method: 'POST', body: command });
+
+export const moveShipment = (command) => request('/api/shipment/move', { method: 'POST', body: command });
+
+export const recordTemperature = (command) =>
+  request('/api/shipment/temperature', { method: 'POST', body: command });

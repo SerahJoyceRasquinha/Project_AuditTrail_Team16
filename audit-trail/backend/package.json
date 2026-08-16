@@ -1,0 +1,33 @@
+{
+  "name": "audit-trail-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Event-Sourced Inventory & Logistics Ledger - CQRS backend (Express + MongoDB)",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "start:worker": "node src/worker.js",
+    "dev": "node --watch src/server.js",
+    "dev:worker": "node --watch src/worker.js",
+    "seed": "node scripts/seed.js",
+    "seed:http": "node scripts/seedHttp.js",
+    "verify:integrity": "node scripts/verifyIntegrity.js",
+    "rebuild:readmodel": "node scripts/rebuildReadModel.js",
+    "test": "node --test --test-reporter=spec tests/**/*.test.js",
+    "test:unit": "node --test --test-reporter=spec tests/unit/*.test.js",
+    "test:integration": "node --test --test-reporter=spec tests/integration/*.test.js",
+    "test:api": "node --test --test-reporter=spec tests/api/*.test.js",
+    "test:concurrency": "node --test --test-reporter=spec tests/concurrency/*.test.js",
+    "test:database": "node --test --test-reporter=spec tests/database/*.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongodb": "^6.8.0"
+  }
+}
