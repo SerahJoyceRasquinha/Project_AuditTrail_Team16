@@ -53,6 +53,7 @@ The ledger starts empty. With the backend running:
 
 ```powershell
 cd backend
+$env:PERSISTENCE="memory"
 npm run seed:http
 ```
 
