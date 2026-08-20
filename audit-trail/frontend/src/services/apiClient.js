@@ -80,6 +80,13 @@ export const listShipments = (params = {}, signal) => {
   if (params.pageSize) query.set('pageSize', String(params.pageSize));
   if (params.state) query.set('state', params.state);
   if (params.search) query.set('search', params.search);
+  if (params.origin) query.set('origin', params.origin);
+  if (params.destination) query.set('destination', params.destination);
+  if (params.hasBreach) query.set('hasBreach', params.hasBreach);
+  if (params.minTemperature !== '') query.set('minTemperature', String(params.minTemperature));
+  if (params.maxTemperature !== '') query.set('maxTemperature', String(params.maxTemperature));
+  if (params.lastEventFrom) query.set('lastEventFrom', `${params.lastEventFrom}T00:00:00.000Z`);
+  if (params.lastEventTo) query.set('lastEventTo', `${params.lastEventTo}T23:59:59.999Z`);
   const suffix = query.toString() ? `?${query}` : '';
   return request(`/api/shipments${suffix}`, { signal });
 };

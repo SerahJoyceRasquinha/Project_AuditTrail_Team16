@@ -402,6 +402,60 @@ button {
   font-family: var(--font-mono);
 }
 
+.filter-panel {
+  margin-bottom: 20px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+}
+
+.filter-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+}
+
+.filter-panel__toggle {
+  color: var(--paper-dim);
+}
+
+.filter-panel__toggle span {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--signal-teal);
+  border-radius: 50%;
+  color: var(--signal-teal);
+  line-height: 1;
+}
+
+.filter-panel__body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--rule-soft);
+}
+
+@media (max-width: 900px) {
+  .filter-panel__body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .search {
+    flex-direction: column;
+  }
+
+  .filter-panel__body {
+    grid-template-columns: 1fr;
+  }
+}
+
 .shipment-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

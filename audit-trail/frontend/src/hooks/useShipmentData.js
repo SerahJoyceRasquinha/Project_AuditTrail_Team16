@@ -84,10 +84,10 @@ export function useAsyncResource(loader, dependencies, { enabled = true, keepPre
   return { ...state, refetch: run, isLoading: state.status === 'loading', isError: state.status === 'error' };
 }
 
-export function useShipmentList({ search, page = 1, pageSize = 20, refreshToken }) {
+export function useShipmentList({ search, page = 1, pageSize = 20, refreshToken, ...filters }) {
   return useAsyncResource(
-    (signal) => api.listShipments({ search, page, pageSize }, signal),
-    [search, page, pageSize, refreshToken],
+    (signal) => api.listShipments({ search, page, pageSize, ...filters }, signal),
+    [search, page, pageSize, refreshToken, ...Object.values(filters)],
     { keepPreviousData: true }
   );
 }

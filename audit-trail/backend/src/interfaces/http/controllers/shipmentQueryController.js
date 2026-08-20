@@ -1,3 +1,9 @@
+function parseOptionalNumber(value) {
+  if (value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Query controller.
  *
@@ -43,6 +49,13 @@ export class ShipmentQueryController {
       pageSize: Number.parseInt(req.query.pageSize ?? '20', 10) || 20,
       state: req.query.state ?? null,
       search: req.query.search ?? null,
+      origin: req.query.origin ?? null,
+      destination: req.query.destination ?? null,
+      hasBreach: req.query.hasBreach === undefined ? null : req.query.hasBreach === 'true',
+      minTemperature: parseOptionalNumber(req.query.minTemperature),
+      maxTemperature: parseOptionalNumber(req.query.maxTemperature),
+      lastEventFrom: req.query.lastEventFrom ?? null,
+      lastEventTo: req.query.lastEventTo ?? null,
     });
     res.status(200).json(result);
   };
