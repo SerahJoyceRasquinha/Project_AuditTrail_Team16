@@ -152,8 +152,8 @@ export class ListShipmentsQueryHandler {
     this.#readModel = readModelRepository;
   }
 
-  async handle({ page, pageSize, state, search } = {}) {
-    return this.#readModel.list({ page, pageSize, state, search });
+  async handle(filters = {}) {
+    return this.#readModel.list(filters);
   }
 }
 

@@ -1,5 +1,9 @@
 import { COLLECTIONS } from '../../config/env.js';
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * The Read Model repository (roadmap 12.2).
  *
@@ -25,18 +29,44 @@ export class ShipmentReadModelRepository {
     return this.#collection.findOne({ aggregateId }, { projection: { _id: 0 } });
   }
 
-  async list({ page = 1, pageSize = 20, state = null, search = null } = {}) {
+  async list({
+    page = 1,
+    pageSize = 20,
+    state = null,
+    search = null,
+    origin = null,
+    destination = null,
+    hasBreach = null,
+    minTemperature = null,
+    maxTemperature = null,
+    lastEventFrom = null,
+    lastEventTo = null,
+  } = {}) {
     const safePageSize = Math.min(Math.max(pageSize, 1), this.#limits.maxShipmentsPerPage);
     const safePage = Math.max(page, 1);
 
     const filter = {};
     if (state) filter.currentState = state;
     if (search) {
-      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escaped = escapeRegex(search);
       filter.$or = [
         { aggregateId: { $regex: escaped, $options: 'i' } },
         { containerCode: { $regex: escaped, $options: 'i' } },
       ];
+    }
+    if (origin) filter.origin = { $regex: escapeRegex(origin), $options: 'i' };
+    if (destination) filter.destination = { $regex: escapeRegex(destination), $options: 'i' };
+    if (hasBreach === true) filter.temperatureBreachCount = { $gt: 0 };
+    if (hasBreach === false) filter.temperatureBreachCount = { $eq: 0 };
+    if (minTemperature !== null || maxTemperature !== null) {
+      filter.latestTemperatureC = {};
+      if (minTemperature !== null) filter.latestTemperatureC.$gte = minTemperature;
+      if (maxTemperature !== null) filter.latestTemperatureC.$lte = maxTemperature;
+    }
+    if (lastEventFrom || lastEventTo) {
+      filter.lastEventAt = {};
+      if (lastEventFrom) filter.lastEventAt.$gte = lastEventFrom;
+      if (lastEventTo) filter.lastEventAt.$lte = lastEventTo;
     }
 
     const [items, total] = await Promise.all([
