@@ -4,7 +4,12 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { EventTimeline } from '../src/components/EventTimeline.jsx';
 import { StateScrubber } from '../src/components/StateScrubber.jsx';
 import { SensorChart } from '../src/components/SensorChart.jsx';
-import { ConflictDialog, ConsistencyBanner, ShipmentSummary } from '../src/components/ShipmentPanels.jsx';
+import {
+  ConflictDialog,
+  ConsistencyBanner,
+  ReconciliationPanel,
+  ShipmentSummary,
+} from '../src/components/ShipmentPanels.jsx';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../src/components/StatusBlocks.jsx';
 import { shipmentReducer, shipmentInitialState, VIEW_MODES } from '../src/store/shipmentStore.jsx';
 
@@ -292,6 +297,51 @@ describe('ConsistencyBanner', () => {
     render(<ConsistencyBanner consistency={{ projected: false, lagVersions: 2 }} />);
     expect(screen.getByText('Synchronising')).toBeInTheDocument();
     expect(screen.getByText(/authoritative record/)).toBeInTheDocument();
+  });
+});
+
+describe('ReconciliationPanel', () => {
+  test('confirms when the projection matches event history', () => {
+    render(
+      <ReconciliationPanel
+        reconciliation={{ consistent: true, expectedVersion: 4, actualVersion: 4, lagVersions: 0 }}
+        isLoading={false}
+        isError={false}
+        onRetry={() => {}}
+      />
+    );
+    expect(screen.getByText('Read model verified')).toBeInTheDocument();
+    expect(screen.getByText('History v4')).toBeInTheDocument();
+    expect(screen.getByText(/matches a fresh replay/)).toBeInTheDocument();
+  });
+
+  test('lists projection drift and supports a manual recheck', () => {
+    const onRetry = vi.fn();
+    render(
+      <ReconciliationPanel
+        reconciliation={{
+          consistent: false,
+          expectedVersion: 5,
+          actualVersion: 4,
+          lagVersions: 1,
+          discrepancies: [{ field: 'currentLocation', actual: 'Port A', expected: 'At sea' }],
+        }}
+        isLoading={false}
+        isError={false}
+        onRetry={onRetry}
+      />
+    );
+    expect(screen.getByText('Read model drift detected')).toBeInTheDocument();
+    expect(screen.getByText(/currentLocation/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Recheck' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  test('offers retry when reconciliation fails', () => {
+    const onRetry = vi.fn();
+    render(<ReconciliationPanel isLoading={false} isError onRetry={onRetry} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
 

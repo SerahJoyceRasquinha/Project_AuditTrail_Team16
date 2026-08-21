@@ -108,6 +108,9 @@ export const getSensorSeries = (shipmentId, at, signal) => {
 export const getIntegrity = (shipmentId, signal) =>
   request(`/api/shipment/${encodeURIComponent(shipmentId)}/integrity`, { signal });
 
+export const getReconciliation = (shipmentId, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}/reconciliation`, { signal });
+
 export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal });
 
 export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });

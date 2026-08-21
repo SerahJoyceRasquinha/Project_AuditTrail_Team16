@@ -126,6 +126,66 @@ export function IntegrityBadge({ integrity, isLoading }) {
   );
 }
 
+export function ReconciliationPanel({ reconciliation, isLoading, isError, onRetry }) {
+  if (isLoading && !reconciliation) {
+    return (
+      <div className="panel__body">
+        <div className="skeleton" style={{ width: '60%' }} />
+      </div>
+    );
+  }
+
+  if (isError && !reconciliation) {
+    return <ErrorPanel message="Reconciliation unavailable." onRetry={onRetry} />;
+  }
+
+  if (!reconciliation) return null;
+  const discrepancies = reconciliation.discrepancies ?? [];
+
+  return (
+    <div className="panel__body">
+      <div className="integrity">
+        <span className={`pill ${reconciliation.consistent ? 'pill--teal' : 'pill--red'}`}>
+          <span className="pill__dot" />
+          {reconciliation.consistent ? 'Read model verified' : 'Read model drift detected'}
+        </span>
+        <button type="button" className="btn btn--sm btn--ghost" onClick={onRetry} disabled={isLoading}>
+          {isLoading ? 'Checking…' : 'Recheck'}
+        </button>
+      </div>
+
+      <div className="reconciliation__versions">
+        <span>History v{reconciliation.expectedVersion ?? '—'}</span>
+        <span>Projection v{reconciliation.actualVersion ?? '—'}</span>
+        {reconciliation.lagVersions > 0 ? <span>{reconciliation.lagVersions} behind</span> : null}
+      </div>
+
+      {reconciliation.consistent ? (
+        <p className="reconciliation__message">The projection matches a fresh replay of the event history.</p>
+      ) : (
+        <ul className="integrity__issues">
+          {discrepancies.map((issue, index) => (
+            <li key={`${issue.field}-${index}`}>
+              <span className="mono">{issue.field}</span>: {issue.message ?? 'value differs from history'}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ErrorPanel({ message, onRetry }) {
+  return (
+    <div className="panel__body state-block state-block--error" role="alert">
+      <div className="state-block__title">{message}</div>
+      <button type="button" className="btn btn--sm" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
 /**
  * The eventual-consistency banner (roadmap 12.6).
  *

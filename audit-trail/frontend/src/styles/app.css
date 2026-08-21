@@ -893,6 +893,22 @@ button {
   font-size: 13px;
 }
 
+.reconciliation__versions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  color: var(--paper-mute);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.reconciliation__message {
+  margin: 10px 0 0;
+  color: var(--paper-mute);
+  font-size: 13px;
+}
+
 /* ---------------------------------------------------- historical framing -- */
 
 /* When the scrubber is engaged the whole workspace shifts, so "current" and
