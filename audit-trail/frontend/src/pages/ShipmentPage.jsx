@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   useHistoricalState,
   useIntegrity,
+  useReconciliation,
   useSensorSeries,
   useShipment,
   useShipmentEvents,
@@ -16,6 +17,7 @@ import {
   ConflictDialog,
   ConsistencyBanner,
   IntegrityBadge,
+  ReconciliationPanel,
   ShipmentSummary,
 } from '../components/ShipmentPanels.jsx';
 import { ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
@@ -49,6 +51,7 @@ function ShipmentWorkspace({ shipmentId }) {
   const historicalQuery = useHistoricalState(shipmentId, store.isHistorical ? store.scrubAt : null);
   const sensorQuery = useSensorSeries(shipmentId, store.isHistorical ? store.scrubAt : null, refreshToken);
   const integrityQuery = useIntegrity(shipmentId, refreshToken);
+  const reconciliationQuery = useReconciliation(shipmentId, refreshToken);
 
   const events = eventsQuery.data?.events ?? [];
   const bounds = eventsQuery.data?.bounds ?? null;
@@ -223,6 +226,18 @@ function ShipmentWorkspace({ shipmentId }) {
               <h2 className="panel__title">Chain integrity</h2>
             </div>
             <IntegrityBadge integrity={integrityQuery.data} isLoading={integrityQuery.isLoading} />
+          </div>
+
+          <div className="panel">
+            <div className="panel__head">
+              <h2 className="panel__title">Read model reconciliation</h2>
+            </div>
+            <ReconciliationPanel
+              reconciliation={reconciliationQuery.data}
+              isLoading={reconciliationQuery.isLoading}
+              isError={reconciliationQuery.isError}
+              onRetry={reconciliationQuery.refetch}
+            />
           </div>
         </div>
       </div>

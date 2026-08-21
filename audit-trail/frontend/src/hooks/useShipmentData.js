@@ -134,6 +134,12 @@ export function useIntegrity(shipmentId, refreshToken) {
   });
 }
 
+export function useReconciliation(shipmentId, refreshToken) {
+  return useAsyncResource((signal) => api.getReconciliation(shipmentId, signal), [shipmentId, refreshToken], {
+    enabled: Boolean(shipmentId),
+  });
+}
+
 /**
  * Polls the worker while the read model is behind.
  *
