@@ -12,7 +12,7 @@ import { useWorkerStatus } from '../hooks/useShipmentData.js';
  */
 export function AppLayout() {
   const location = useLocation();
-  const worker = useWorkerStatus({ intervalMs: 4000 });
+  const worker = useWorkerStatus({ intervalMs: 4000, active: location.pathname !== '/' });
   const behind = worker?.lag?.behindBy ?? 0;
 
   return (
@@ -34,11 +34,11 @@ export function AppLayout() {
 
         <nav>
           <Link
-            to="/"
+            to="/shipments"
             className="btn btn--sm btn--ghost"
-            aria-current={location.pathname === '/' ? 'page' : undefined}
+            aria-current={location.pathname === '/shipments' ? 'page' : undefined}
           >
-            Shipments
+            Open ledger
           </Link>
         </nav>
       </header>
