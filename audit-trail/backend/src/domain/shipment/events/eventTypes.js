@@ -22,7 +22,28 @@ export const EVENT_TYPES = Object.freeze({
   ARRIVED_AT_PORT: 'ARRIVED_AT_PORT',
   TEMPERATURE_RECORDED: 'TEMPERATURE_RECORDED',
   UNLOADED_FROM_SHIP: 'UNLOADED_FROM_SHIP',
+  SHIPMENT_DETAILS_AMENDED: 'SHIPMENT_DETAILS_AMENDED',
+  SHIPMENT_ARCHIVED: 'SHIPMENT_ARCHIVED',
+  SHIPMENT_RESTORED: 'SHIPMENT_RESTORED',
 });
+
+/**
+ * The manifest fields a SHIPMENT_DETAILS_AMENDED event may carry.
+ *
+ * Deliberately a subset of the CONTAINER_CREATED payload. `shipmentId` is the
+ * aggregate identity and can never be amended - changing it would mean moving
+ * the stream, not correcting it - and lifecycle facts (location, state, vessel)
+ * are movement-derived and belong to movement events.
+ */
+export const AMENDABLE_FIELDS = Object.freeze([
+  'containerCode',
+  'origin',
+  'destination',
+  'cargoDescription',
+  'carrier',
+  'minTemperatureC',
+  'maxTemperatureC',
+]);
 
 /** Lifecycle states produced by the reducer. */
 export const SHIPMENT_STATES = Object.freeze({
@@ -103,6 +124,67 @@ export const EVENT_CATALOG = Object.freeze({
     optionalPayloadFields: ['yardBlock', 'notes'],
     reducerEffect: 'state -> UNLOADED; currentLocation = payload.location.',
   },
+  [EVENT_TYPES.SHIPMENT_DETAILS_AMENDED]: {
+    origin: 'design-decision',
+    description:
+      'A correction to the manifest details declared at creation. This is how "editing a shipment" is expressed in an event-sourced ledger: the CONTAINER_CREATED event is never touched, and the amendment is appended as a new fact with its own timestamp and version. The payload carries only the fields that actually changed, so the event answers "what was corrected, and when" rather than restating the whole record.',
+    requiredPayloadFields: [],
+    optionalPayloadFields: [...AMENDABLE_FIELDS, 'reason'],
+    reducerEffect:
+      'Overlays the supplied fields onto the current state. Lifecycle state is never changed. currentLocation follows an amended origin only while the shipment is still in CREATED - see the design decision note below.',
+  },
+  [EVENT_TYPES.SHIPMENT_ARCHIVED]: {
+    origin: 'design-decision',
+    description:
+      'The shipment is withdrawn from the active fleet. This is what "delete" means here. Nothing is removed: the stream, its hash chain and every historical event survive intact, and the shipment remains fully readable, replayable and scrubbable by ID. Only its presence in the default active listing changes.',
+    requiredPayloadFields: [],
+    optionalPayloadFields: ['reason'],
+    reducerEffect: 'archived -> true; archivedAt recorded. Lifecycle state is deliberately unchanged.',
+  },
+  [EVENT_TYPES.SHIPMENT_RESTORED]: {
+    origin: 'design-decision',
+    description:
+      'Reverses an archival by appending a new fact rather than by removing the SHIPMENT_ARCHIVED event. An archive that could be undone by deletion would defeat the entire point of the ledger.',
+    requiredPayloadFields: [],
+    optionalPayloadFields: ['reason'],
+    reducerEffect: 'archived -> false; restoredAt recorded; archivedAt cleared from the projected state.',
+  },
+});
+
+/**
+ * Design decision - what "update" and "delete" mean in this ledger
+ * (the two operations Event Sourcing has no native verb for):
+ *
+ * **Update.** A shipment's manifest details are corrected by appending
+ * SHIPMENT_DETAILS_AMENDED. The original CONTAINER_CREATED payload stays
+ * exactly as written, so a dispute about what was *originally* declared is
+ * still answerable, and the time scrubber still shows the pre-correction values
+ * at any instant before the amendment. An amendment that would change nothing
+ * is rejected rather than appended: an audit trail full of no-op events is
+ * harder to read and proves nothing.
+ *
+ * A corrected `origin` moves `currentLocation` only while the shipment is still
+ * in CREATED - i.e. it has never physically moved, so its location is still
+ * just "where it started". Once a movement event exists, location is a
+ * movement-derived fact and a manifest correction must not overwrite it.
+ *
+ * **Delete.** There is no delete. SHIPMENT_ARCHIVED removes a shipment from the
+ * active listing and nothing more; the events, the chain and every query
+ * against them remain available. The read model carries the flag, so
+ * "active shipments" is a projection concern - which is correct, because
+ * archival status is derived state like everything else in the read model.
+ *
+ * Neither event touches the lifecycle state, for the same reason
+ * TEMPERATURE_SPIKE does not: the source document defines no lifecycle
+ * consequence for them, and inventing one would put unsourced business rules
+ * into the audit trail.
+ */
+export const LIFECYCLE_POLICY = Object.freeze({
+  update: 'SHIPMENT_DETAILS_AMENDED - appended; never edits CONTAINER_CREATED.',
+  delete: 'SHIPMENT_ARCHIVED - a listing concern only; no event is ever removed.',
+  undelete: 'SHIPMENT_RESTORED - appended; never removes SHIPMENT_ARCHIVED.',
+  archivedShipments:
+    'Reject further movement, temperature and amendment commands until restored. Remain fully readable, replayable and scrubbable.',
 });
 
 /**

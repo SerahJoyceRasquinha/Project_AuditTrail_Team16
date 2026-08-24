@@ -1,4 +1,4 @@
-import { EVENT_TYPES, SHIPMENT_STATES } from '../events/eventTypes.js';
+import { AMENDABLE_FIELDS, EVENT_TYPES, SHIPMENT_STATES } from '../events/eventTypes.js';
 import { ValidationError } from '../../../shared/errors/AppError.js';
 
 /**
@@ -35,6 +35,11 @@ export const initialShipmentState = Object.freeze({
   temperatureReadingCount: 0,
   temperatureBreachCount: 0,
   temperatureExcursion: false,
+  archived: false,
+  archivedAt: null,
+  restoredAt: null,
+  amendmentCount: 0,
+  lastAmendedAt: null,
   createdAt: null,
   loadedAt: null,
   arrivedAt: null,
@@ -127,6 +132,53 @@ export function applyEvent(state, event, { strict = true } = {}) {
         temperatureReadingCount: base.temperatureReadingCount + 1,
         temperatureBreachCount: base.temperatureBreachCount + 1,
         temperatureExcursion: true,
+      });
+
+    /**
+     * A manifest correction. Only the fields present in the payload move; an
+     * absent field means "not amended", never "cleared". That is what lets the
+     * event stay small enough to read as a diff in the timeline.
+     */
+    case EVENT_TYPES.SHIPMENT_DETAILS_AMENDED: {
+      const amended = { ...base };
+
+      for (const field of AMENDABLE_FIELDS) {
+        if (payload[field] === undefined) continue;
+        amended[field] =
+          field === 'minTemperatureC' || field === 'maxTemperatureC'
+            ? numberOrNull(payload[field])
+            : payload[field];
+      }
+
+      // A corrected origin is still "where it is" only while nothing has moved
+      // it. After any movement, location belongs to the movement events.
+      if (payload.origin !== undefined && base.currentState === SHIPMENT_STATES.CREATED) {
+        amended.currentLocation = payload.origin;
+      }
+
+      return Object.freeze({
+        ...amended,
+        amendmentCount: base.amendmentCount + 1,
+        lastAmendedAt: event.timestamp,
+      });
+    }
+
+    // Neither of the next two touches `currentState`: archival is an
+    // administrative fact about the ledger, not a physical fact about the
+    // container. See LIFECYCLE_POLICY.
+    case EVENT_TYPES.SHIPMENT_ARCHIVED:
+      return Object.freeze({
+        ...base,
+        archived: true,
+        archivedAt: event.timestamp,
+      });
+
+    case EVENT_TYPES.SHIPMENT_RESTORED:
+      return Object.freeze({
+        ...base,
+        archived: false,
+        archivedAt: null,
+        restoredAt: event.timestamp,
       });
 
     default:

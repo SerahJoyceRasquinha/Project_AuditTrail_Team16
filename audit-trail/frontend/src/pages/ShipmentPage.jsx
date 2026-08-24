@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import * as api from '../services/apiClient.js';
 import {
+  useCommand,
   useHistoricalState,
   useIntegrity,
   useReconciliation,
@@ -14,12 +16,14 @@ import { StateScrubber } from '../components/StateScrubber.jsx';
 import { SensorChart } from '../components/SensorChart.jsx';
 import { CommandPanel } from '../components/CommandPanel.jsx';
 import {
+  ConfirmDialog,
   ConflictDialog,
   ConsistencyBanner,
   IntegrityBadge,
   ReconciliationPanel,
   ShipmentSummary,
 } from '../components/ShipmentPanels.jsx';
+import { ShipmentFormDialog } from '../components/ShipmentFormDialog.jsx';
 import { ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 import { formatTimestamp } from '../utils/format.js';
@@ -45,6 +49,10 @@ export function ShipmentPage() {
 function ShipmentWorkspace({ shipmentId }) {
   const store = useShipmentStore();
   const refreshToken = store.lastCommandAt;
+
+  const [dialog, setDialog] = useState(null);
+  const [reason, setReason] = useState('');
+  const [notice, setNotice] = useState(null);
 
   const shipmentQuery = useShipment(shipmentId, refreshToken);
   const eventsQuery = useShipmentEvents(shipmentId, refreshToken);
@@ -78,6 +86,49 @@ function ShipmentWorkspace({ shipmentId }) {
     store.commandSucceeded();
   };
 
+  const live = shipmentQuery.data?.shipment ?? null;
+  const isArchived = Boolean(live?.archived);
+
+  /**
+   * Every management action ends the same way: `store.commandSucceeded()`
+   * bumps the refresh token every query on this page depends on, so the
+   * summary, the timeline, the chart and the integrity badge all refetch
+   * together. Nothing reloads the application, and nothing is patched into
+   * local state behind the backend's back.
+   */
+  const archival = useCommand({
+    onSuccess: (result) => {
+      setNotice(
+        result.eventType === 'SHIPMENT_ARCHIVED'
+          ? `Archived as version ${result.version}. Every event below is unchanged.`
+          : `Restored as version ${result.version}.`
+      );
+      setDialog(null);
+      setReason('');
+      store.commandSucceeded();
+    },
+    onConflict: (error) => {
+      setDialog(null);
+      store.commandConflicted(error);
+    },
+  });
+
+  const confirmArchival = () => {
+    const command = {
+      shipmentId,
+      reason: reason.trim() || null,
+      expectedVersion: live?.currentVersion,
+    };
+    archival.execute(() =>
+      dialog === 'archive' ? api.archiveShipment(command) : api.restoreShipment(command)
+    );
+  };
+
+  const onAmended = (result) => {
+    setNotice(`Amended as version ${result.version} - the correction is now the newest event below.`);
+    store.commandSucceeded();
+  };
+
   if (shipmentQuery.isLoading && !shipmentQuery.data) {
     return (
       <div className="panel">
@@ -101,11 +152,82 @@ function ShipmentWorkspace({ shipmentId }) {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <Link className="eyebrow" to="/">
+      <div className="shipment-toolbar">
+        <Link className="eyebrow" to="/shipments">
           ← All shipments
         </Link>
+        <span className="spacer" />
+
+        {/* Management actions live here, beside the record they act on, rather
+            than on a separate screen. They are disabled while the scrubber is
+            engaged for the same reason the command panel is: a command issued
+            from a historical view would carry a version that is no longer
+            current. */}
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={() => setDialog('amend')}
+          disabled={store.isHistorical || isArchived || !live}
+          title={
+            isArchived
+              ? 'Restore this shipment before amending it.'
+              : store.isHistorical
+                ? 'Return to the live view to amend this shipment.'
+                : undefined
+          }
+        >
+          Edit details
+        </button>
+        {isArchived ? (
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => {
+              setReason('');
+              setDialog('restore');
+            }}
+            disabled={store.isHistorical || !live}
+          >
+            Restore
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => {
+              setReason('');
+              setDialog('archive');
+            }}
+            disabled={store.isHistorical || !live}
+          >
+            Archive
+          </button>
+        )}
       </div>
+
+      {notice ? (
+        <div className="form-success ledger-notice" role="status">
+          <span>{notice}</span>
+          <button type="button" className="btn btn--sm btn--ghost" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {/* An archived shipment is still fully readable - that is the whole
+          claim being made - so the page says what changed and what did not. */}
+      {isArchived && !store.isHistorical ? (
+        <div className="banner banner--historical" role="status">
+          <span className="pill pill--violet">
+            <span className="pill__dot" />
+            Archived
+          </span>
+          <span>
+            Withdrawn from the active fleet. Nothing was deleted: the event history below, its hash chain
+            and the time scrubber are all intact, and further commands are refused until it is restored.
+          </span>
+        </div>
+      ) : null}
 
       <ConsistencyBanner consistency={shipmentQuery.data?.consistency} />
 
@@ -192,8 +314,12 @@ function ShipmentWorkspace({ shipmentId }) {
             </div>
             <CommandPanel
               shipment={shipmentQuery.data?.shipment}
-              disabled={store.isHistorical}
-              disabledReason="Return to the live view before appending events. A command issued from a historical view would carry a version that is no longer current."
+              disabled={store.isHistorical || isArchived}
+              disabledReason={
+                isArchived
+                  ? 'This shipment is archived, so it accepts no further movements or readings. Restore it to resume recording - its history is unchanged either way.'
+                  : 'Return to the live view before appending events. A command issued from a historical view would carry a version that is no longer current.'
+              }
               onCommandSucceeded={store.commandSucceeded}
               onConflict={store.commandConflicted}
             />
@@ -241,6 +367,34 @@ function ShipmentWorkspace({ shipmentId }) {
           </div>
         </div>
       </div>
+
+      {dialog === 'amend' ? (
+        <ShipmentFormDialog
+          mode="amend"
+          shipment={live}
+          onClose={() => setDialog(null)}
+          onSucceeded={onAmended}
+          onConflict={store.commandConflicted}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={dialog === 'archive' || dialog === 'restore'}
+        title={dialog === 'archive' ? `Archive ${shipmentId}?` : `Restore ${shipmentId}?`}
+        body={
+          dialog === 'archive'
+            ? 'This appends a SHIPMENT_ARCHIVED event and withdraws the shipment from the active list. No event is deleted, and you can restore it at any time.'
+            : 'This appends a SHIPMENT_RESTORED event and returns the shipment to the active list. The earlier archival stays on the record.'
+        }
+        confirmLabel={dialog === 'archive' ? 'Archive shipment' : 'Restore shipment'}
+        tone={dialog === 'archive' ? 'danger' : 'primary'}
+        pending={archival.pending}
+        error={archival.error && !archival.error.isConflict ? archival.error : null}
+        reason={reason}
+        onReasonChange={setReason}
+        onConfirm={confirmArchival}
+        onCancel={() => setDialog(null)}
+      />
 
       <ConflictDialog conflict={store.conflict} onReload={reload} onDismiss={store.dismissConflict} />
     </>

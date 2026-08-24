@@ -69,6 +69,9 @@ export const EVENT_LABELS = {
   TEMPERATURE_SPIKE: 'Temperature spike',
   ARRIVED_AT_PORT: 'Arrived at port',
   UNLOADED_FROM_SHIP: 'Unloaded from ship',
+  SHIPMENT_DETAILS_AMENDED: 'Details amended',
+  SHIPMENT_ARCHIVED: 'Shipment archived',
+  SHIPMENT_RESTORED: 'Shipment restored',
 };
 
 export const eventLabel = (eventType) => EVENT_LABELS[eventType] ?? eventType;
@@ -94,6 +97,12 @@ export function eventTone(eventType) {
       return 'success';
     case 'TEMPERATURE_RECORDED':
       return 'muted';
+    case 'SHIPMENT_DETAILS_AMENDED':
+      return 'violet';
+    case 'SHIPMENT_ARCHIVED':
+      return 'muted';
+    case 'SHIPMENT_RESTORED':
+      return 'success';
     default:
       return 'accent';
   }
@@ -121,6 +130,7 @@ export function payloadEntries(payload = {}) {
     direction: 'Direction',
     notes: 'Notes',
     yardBlock: 'Yard block',
+    reason: 'Reason',
   };
 
   return Object.entries(payload).map(([key, value]) => {

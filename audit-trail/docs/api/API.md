@@ -92,7 +92,65 @@ retroactively reclassify past readings.
 `recordedAt` is when the sensor sampled; the event `timestamp` is when the event
 occurred. Both are kept.
 
-### `occurredAt` — optional, on all three commands
+### `POST /api/shipment/amend`
+
+Corrects the manifest details declared at creation. Emits
+`SHIPMENT_DETAILS_AMENDED`. **The `CONTAINER_CREATED` event is not touched** —
+this appends a new event describing what changed.
+
+```json
+{
+  "shipmentId": "SHP-1001",
+  "destination": "Hamburg, DE",
+  "carrier": "Hapag-Lloyd",
+  "reason": "Consignee redirected the container",
+  "expectedVersion": 4
+}
+```
+
+Amendable fields: `containerCode`, `origin`, `destination`, `cargoDescription`,
+`carrier`, `minTemperatureC`, `maxTemperatureC`. Send only what changes; an
+omitted field is *not amended*, and an empty string is treated the same way
+rather than as a request to blank a stored value.
+
+`shipmentId` is never amendable — it is the aggregate identity, and changing it
+would mean moving the stream rather than correcting it.
+
+Refused with **409 `DOMAIN_RULE_VIOLATION`** if the amendment would change
+nothing, or if the shipment is archived. `expectedVersion` is **required**: an
+amendment is exactly the kind of edit OCC exists to protect.
+
+**200** — same envelope as `move`, with `"eventType": "SHIPMENT_DETAILS_AMENDED"`.
+
+### `POST /api/shipment/archive`
+
+The closest thing this API has to "delete", and deliberately not close. Emits
+`SHIPMENT_ARCHIVED`, which withdraws the shipment from the default active
+listing. **No event is removed.** The stream, its hash chain, its timeline and
+its time scrubber all remain fully available, and `GET /api/shipment/:id`
+continues to serve it.
+
+```json
+{ "shipmentId": "SHP-1001", "reason": "Claim settled", "expectedVersion": 5 }
+```
+
+An archived shipment refuses further `move`, `temperature` and `amend` commands
+with **409 `DOMAIN_RULE_VIOLATION`** until it is restored.
+
+### `POST /api/shipment/restore`
+
+Emits `SHIPMENT_RESTORED` and returns the shipment to the active listing. Note
+that this *appends* — it does not remove the `SHIPMENT_ARCHIVED` event. An
+archival that could be undone by deletion would defeat the point of the ledger.
+
+```json
+{ "shipmentId": "SHP-1001", "reason": "Dispute reopened", "expectedVersion": 6 }
+```
+
+There is no `PUT` and no `DELETE` anywhere in this API. Editing and removing a
+shipment are commands that append events, exactly like moving one.
+
+### `occurredAt` — optional, on all commands
 
 When the event happened in the real world, as distinct from when the system
 recorded it. Defaults to now.
@@ -173,11 +231,22 @@ Hash-chain verification. `intact: true/false` plus any `issues`
 Compares the projection against a fresh replay. Reports `consistent` and any
 field-level `discrepancies`. The Event Store is always treated as authoritative.
 
-### `GET /api/shipments?page=&pageSize=&state=&search=`
+### `GET /api/shipments?page=&pageSize=&state=&search=&view=`
 
 Paginated dashboard list from the read model.
 
 ---
+
+`view` selects the archival slice and defaults to `active`:
+
+| `view` | Returns |
+| --- | --- |
+| `active` *(default)* | Shipments that are not archived |
+| `archived` | Archived shipments only — with their history fully intact |
+| `all` | Everything |
+
+An unrecognised value falls back to `active` rather than erroring: silently
+listing archived shipments would be the more surprising outcome.
 
 ## Meta and operations
 

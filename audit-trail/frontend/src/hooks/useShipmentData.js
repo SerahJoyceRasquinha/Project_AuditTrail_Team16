@@ -186,6 +186,58 @@ export function useDebouncedValue(value, delayMs = 250) {
   return debounced;
 }
 
+/**
+ * Keeps a read-model-backed view fresh after a command, without reloading the
+ * page and without lying about consistency.
+ *
+ * `GET /api/shipments` is served from the projection only, so a shipment
+ * created a millisecond ago genuinely is not in it yet. Rather than papering
+ * over that with an optimistic local insert — which would put a row on screen
+ * that the backend has not confirmed — `sync()` refetches immediately and then
+ * again once the worker reports it has caught up.
+ *
+ * The poll is bounded. If the worker is stopped or wedged, the caller gets
+ * `settling: false` back after a few seconds and the UI stops promising an
+ * update that is not coming.
+ */
+export function useLedgerSync({ intervalMs = 300, maxAttempts = 12 } = {}) {
+  const [token, setToken] = useState(0);
+  const [settling, setSettling] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const sync = useCallback(async () => {
+    setToken((current) => current + 1);
+    setSettling(true);
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await new Promise((resolve) => {
+        timerRef.current = setTimeout(resolve, intervalMs);
+      });
+
+      try {
+        const status = await api.getWorkerStatus();
+        if ((status?.lag?.behindBy ?? 0) <= 0) {
+          setToken((current) => current + 1);
+          setSettling(false);
+          return true;
+        }
+      } catch {
+        // The command already succeeded; a failed status poll must not be
+        // reported as though the command failed.
+        break;
+      }
+    }
+
+    setToken((current) => current + 1);
+    setSettling(false);
+    return false;
+  }, [intervalMs, maxAttempts]);
+
+  return { token, sync, settling };
+}
+
 /** Wraps a command call, routing 409s into the store's conflict state. */
 export function useCommand({ onSuccess, onConflict }) {
   const [state, setState] = useState({ pending: false, error: null, result: null });

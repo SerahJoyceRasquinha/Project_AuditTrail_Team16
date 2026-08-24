@@ -151,4 +151,47 @@ export class ShipmentCommandService {
       decide: (aggregate, context) => aggregate.recordTemperature(command, context),
     });
   }
+
+  /**
+   * The three lifecycle-management commands below go through exactly the same
+   * `#execute` path as every other command. That is the point: "edit" and
+   * "delete" get no shortcut, no direct write, and no special case. They load
+   * history, fold it, honour the same OCC check, let the aggregate decide, and
+   * append one event.
+   */
+  async amendShipmentDetails(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'AmendShipmentDetails',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.amendDetails(command, context),
+    });
+  }
+
+  async archiveShipment(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'ArchiveShipment',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.archive(command, context),
+    });
+  }
+
+  async restoreShipment(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'RestoreShipment',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.restore(command, context),
+    });
+  }
 }

@@ -261,6 +261,111 @@ export function validateRecordTemperatureCommand(input) {
   return { occurredAt, shipmentId, temperatureC, recordedAt: recordedAt ?? null, sensorId, expectedVersion };
 }
 
+/**
+ * POST /shipment/amend
+ *
+ * Structural only, as everywhere else here: this asks "is this a well-formed
+ * amendment?", not "does it change anything?" or "is this shipment archived?".
+ * Both of those are questions about aggregate state and are answered by the
+ * aggregate.
+ *
+ * A field the client omits is *not amended*. A field sent as an empty string is
+ * also treated as not amended rather than as a request to blank it: the
+ * dashboard sends whole forms, and a blank optional input must not silently
+ * erase a stored value.
+ */
+export function validateAmendShipmentCommand(input) {
+  const errors = [];
+  const shipmentId = input?.shipmentId;
+  try {
+    validateShipmentId(shipmentId);
+  } catch (error) {
+    errors.push({ field: 'shipmentId', message: error.message });
+  }
+
+  const containerCode = optionalString(errors, input, 'containerCode', { maxLength: 32 });
+  const origin = optionalString(errors, input, 'origin', { maxLength: 200 });
+  const destination = optionalString(errors, input, 'destination', { maxLength: 200 });
+  const cargoDescription = optionalString(errors, input, 'cargoDescription');
+  const carrier = optionalString(errors, input, 'carrier', { maxLength: 120 });
+  const minTemperatureC = optionalFiniteNumber(errors, input, 'minTemperatureC');
+  const maxTemperatureC = optionalFiniteNumber(errors, input, 'maxTemperatureC');
+  const reason = optionalString(errors, input, 'reason', { maxLength: 300 });
+
+  if (minTemperatureC !== null && maxTemperatureC !== null && minTemperatureC > maxTemperatureC) {
+    errors.push({
+      field: 'minTemperatureC',
+      message: "'minTemperatureC' cannot be greater than 'maxTemperatureC'.",
+    });
+  }
+
+  const supplied = [containerCode, origin, destination, cargoDescription, carrier, minTemperatureC, maxTemperatureC];
+  if (supplied.every((value) => value === null)) {
+    errors.push({
+      field: 'amendment',
+      message:
+        'An amendment must carry at least one field to change. Send the corrected value for at least one of: containerCode, origin, destination, cargoDescription, carrier, minTemperatureC, maxTemperatureC.',
+    });
+  }
+
+  let expectedVersion = null;
+  try {
+    expectedVersion = validateExpectedVersion(input?.expectedVersion, { minimum: 1 });
+  } catch (error) {
+    errors.push({ field: 'expectedVersion', message: error.message });
+  }
+
+  const occurredAt = optionalOccurredAt(errors, input);
+
+  throwIfAny(errors, 'The amend-shipment command failed validation.');
+
+  return {
+    occurredAt,
+    shipmentId,
+    containerCode,
+    origin,
+    destination,
+    cargoDescription,
+    carrier,
+    minTemperatureC,
+    maxTemperatureC,
+    reason,
+    expectedVersion,
+  };
+}
+
+/** POST /shipment/archive and POST /shipment/restore - identical shapes. */
+function validateArchivalCommand(input, commandLabel) {
+  const errors = [];
+  const shipmentId = input?.shipmentId;
+  try {
+    validateShipmentId(shipmentId);
+  } catch (error) {
+    errors.push({ field: 'shipmentId', message: error.message });
+  }
+
+  const reason = optionalString(errors, input, 'reason', { maxLength: 300 });
+
+  let expectedVersion = null;
+  try {
+    expectedVersion = validateExpectedVersion(input?.expectedVersion, { minimum: 1 });
+  } catch (error) {
+    errors.push({ field: 'expectedVersion', message: error.message });
+  }
+
+  const occurredAt = optionalOccurredAt(errors, input);
+
+  throwIfAny(errors, `The ${commandLabel} command failed validation.`);
+
+  return { occurredAt, shipmentId, reason, expectedVersion };
+}
+
+export const validateArchiveShipmentCommand = (input) =>
+  validateArchivalCommand(input, 'archive-shipment');
+
+export const validateRestoreShipmentCommand = (input) =>
+  validateArchivalCommand(input, 'restore-shipment');
+
 /** Query-side validation for the state-scrubbing endpoint. */
 export function validateHistoricalStateQuery({ shipmentId, at }) {
   validateShipmentId(shipmentId);

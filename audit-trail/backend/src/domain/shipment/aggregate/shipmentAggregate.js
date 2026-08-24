@@ -1,4 +1,5 @@
 import {
+  AMENDABLE_FIELDS,
   EVENT_TYPES,
   MOVEMENT_TO_EVENT,
   MOVEMENT_TYPES,
@@ -51,6 +52,21 @@ export class ShipmentAggregate {
   }
 
   /**
+   * An archived shipment has been withdrawn from the active fleet, so recording
+   * new facts against it would be recording facts about something nobody is
+   * operating. It stays fully readable; it just stops accepting commands until
+   * it is restored.
+   */
+  #assertNotArchived(action) {
+    if (this.#state.archived) {
+      throw new DomainRuleViolationError(
+        `Shipment '${this.#state.aggregateId}' is archived and cannot ${action}. Restore it first; its history is intact and unchanged.`,
+        { aggregateId: this.#state.aggregateId, archived: true, archivedAt: this.#state.archivedAt }
+      );
+    }
+  }
+
+  /**
    * CreateShipment -> CONTAINER_CREATED.
    *
    * A stream may only ever have one creation event; re-creating would give the
@@ -93,6 +109,7 @@ export class ShipmentAggregate {
    */
   move(command, { timestamp, correlationId, causationId } = {}) {
     this.#assertExists();
+    this.#assertNotArchived('record a movement');
 
     const current = this.#state.currentState;
     const eventType = MOVEMENT_TO_EVENT[command.movementType];
@@ -158,6 +175,7 @@ export class ShipmentAggregate {
    */
   recordTemperature(command, { timestamp, correlationId, causationId } = {}) {
     this.#assertExists();
+    this.#assertNotArchived('accept a temperature reading');
 
     const { minTemperatureC, maxTemperatureC } = this.#state;
     const hasRange = minTemperatureC !== null && maxTemperatureC !== null;
@@ -191,6 +209,129 @@ export class ShipmentAggregate {
         sensorId: command.sensorId,
         ...(isBreach ? { thresholdC, direction } : {}),
       }),
+    });
+  }
+
+  /**
+   * AmendShipmentDetails -> SHIPMENT_DETAILS_AMENDED.
+   *
+   * This is the event-sourced answer to "edit this shipment". The original
+   * CONTAINER_CREATED event is not touched, is not re-read, and cannot be
+   * reached from here - the aggregate only ever returns new events.
+   *
+   * Two rules worth their weight:
+   *
+   *   1. Only fields that genuinely *differ* from current state are carried, so
+   *      the stored event reads as a diff and the timeline shows exactly what
+   *      was corrected.
+   *   2. If nothing differs, the command is refused. Appending an event that
+   *      changes nothing pollutes an audit trail whose entire value is that
+   *      every entry means something.
+   */
+  amendDetails(command, { timestamp, correlationId, causationId } = {}) {
+    this.#assertExists();
+    this.#assertNotArchived('be amended');
+
+    const changes = {};
+    for (const field of AMENDABLE_FIELDS) {
+      const proposed = command[field];
+      if (proposed === undefined || proposed === null) continue;
+      if (proposed === this.#state[field]) continue;
+      changes[field] = proposed;
+    }
+
+    if (Object.keys(changes).length === 0) {
+      throw new DomainRuleViolationError(
+        `The amendment for shipment '${command.shipmentId}' would change nothing. No event was appended; an audit trail should not carry entries that record no change.`,
+        { aggregateId: command.shipmentId, currentVersion: this.#state.version }
+      );
+    }
+
+    /**
+     * The declared range classifies every future reading, so the two bounds are
+     * only meaningful together. If either is amended, both are written, taking
+     * the unamended side from current state - otherwise a stream could end up
+     * with a half-declared range that the reducer cannot use.
+     */
+    if (changes.minTemperatureC !== undefined || changes.maxTemperatureC !== undefined) {
+      const min = changes.minTemperatureC ?? this.#state.minTemperatureC;
+      const max = changes.maxTemperatureC ?? this.#state.maxTemperatureC;
+
+      if (min === null || max === null) {
+        throw new DomainRuleViolationError(
+          `Amending the temperature range on shipment '${command.shipmentId}' requires both bounds. A one-sided range cannot classify a breach.`,
+          { aggregateId: command.shipmentId, minTemperatureC: min, maxTemperatureC: max }
+        );
+      }
+      if (min > max) {
+        throw new DomainRuleViolationError(
+          `'minTemperatureC' (${min}) cannot be greater than 'maxTemperatureC' (${max}).`,
+          { aggregateId: command.shipmentId, minTemperatureC: min, maxTemperatureC: max }
+        );
+      }
+
+      changes.minTemperatureC = min;
+      changes.maxTemperatureC = max;
+    }
+
+    return createEvent({
+      aggregateId: command.shipmentId,
+      eventType: EVENT_TYPES.SHIPMENT_DETAILS_AMENDED,
+      version: this.#state.version + 1,
+      timestamp,
+      correlationId,
+      causationId,
+      payload: stripNulls({ ...changes, reason: command.reason }),
+    });
+  }
+
+  /**
+   * ArchiveShipment -> SHIPMENT_ARCHIVED.
+   *
+   * The closest this system has to "delete", and deliberately not close at all:
+   * it appends a fact, and every earlier event remains readable, hashable and
+   * replayable afterwards.
+   */
+  archive(command, { timestamp, correlationId, causationId } = {}) {
+    this.#assertExists();
+
+    if (this.#state.archived) {
+      throw new DomainRuleViolationError(
+        `Shipment '${command.shipmentId}' is already archived (since ${this.#state.archivedAt}).`,
+        { aggregateId: command.shipmentId, archivedAt: this.#state.archivedAt }
+      );
+    }
+
+    return createEvent({
+      aggregateId: command.shipmentId,
+      eventType: EVENT_TYPES.SHIPMENT_ARCHIVED,
+      version: this.#state.version + 1,
+      timestamp,
+      correlationId,
+      causationId,
+      payload: stripNulls({ reason: command.reason }),
+    });
+  }
+
+  /** RestoreShipment -> SHIPMENT_RESTORED. Undo by appending, never by deleting. */
+  restore(command, { timestamp, correlationId, causationId } = {}) {
+    this.#assertExists();
+
+    if (!this.#state.archived) {
+      throw new DomainRuleViolationError(
+        `Shipment '${command.shipmentId}' is not archived, so there is nothing to restore.`,
+        { aggregateId: command.shipmentId, archived: false }
+      );
+    }
+
+    return createEvent({
+      aggregateId: command.shipmentId,
+      eventType: EVENT_TYPES.SHIPMENT_RESTORED,
+      version: this.#state.version + 1,
+      timestamp,
+      correlationId,
+      causationId,
+      payload: stripNulls({ reason: command.reason }),
     });
   }
 }

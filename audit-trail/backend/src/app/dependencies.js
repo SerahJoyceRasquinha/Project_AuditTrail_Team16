@@ -8,9 +8,12 @@ import { SensorService } from '../application/services/sensorService.js';
 import { ReconciliationService } from '../application/services/reconciliationService.js';
 
 import {
+  AmendShipmentCommandHandler,
+  ArchiveShipmentCommandHandler,
   CreateShipmentCommandHandler,
   MoveShipmentCommandHandler,
   RecordTemperatureCommandHandler,
+  RestoreShipmentCommandHandler,
 } from '../application/commands/commandHandlers.js';
 
 import {
@@ -64,6 +67,9 @@ export function buildContainer({ db, config, logger }) {
   const createShipmentCommandHandler = new CreateShipmentCommandHandler({ shipmentCommandService });
   const moveShipmentCommandHandler = new MoveShipmentCommandHandler({ shipmentCommandService });
   const recordTemperatureCommandHandler = new RecordTemperatureCommandHandler({ shipmentCommandService });
+  const amendShipmentCommandHandler = new AmendShipmentCommandHandler({ shipmentCommandService });
+  const archiveShipmentCommandHandler = new ArchiveShipmentCommandHandler({ shipmentCommandService });
+  const restoreShipmentCommandHandler = new RestoreShipmentCommandHandler({ shipmentCommandService });
 
   // --- Query handlers (read side) ------------------------------------------
   const getShipmentQueryHandler = new GetShipmentQueryHandler({
@@ -84,6 +90,9 @@ export function buildContainer({ db, config, logger }) {
     createShipmentCommandHandler,
     moveShipmentCommandHandler,
     recordTemperatureCommandHandler,
+    amendShipmentCommandHandler,
+    archiveShipmentCommandHandler,
+    restoreShipmentCommandHandler,
   });
 
   const shipmentQueryController = new ShipmentQueryController({
@@ -120,6 +129,9 @@ export function buildContainer({ db, config, logger }) {
       createShipmentCommandHandler,
       moveShipmentCommandHandler,
       recordTemperatureCommandHandler,
+      amendShipmentCommandHandler,
+      archiveShipmentCommandHandler,
+      restoreShipmentCommandHandler,
     },
     queryHandlers: {
       getShipmentQueryHandler,

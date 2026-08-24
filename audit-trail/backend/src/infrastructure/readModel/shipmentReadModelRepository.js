@@ -41,11 +41,27 @@ export class ShipmentReadModelRepository {
     maxTemperature = null,
     lastEventFrom = null,
     lastEventTo = null,
+    view = 'active',
   } = {}) {
     const safePageSize = Math.min(Math.max(pageSize, 1), this.#limits.maxShipmentsPerPage);
     const safePage = Math.max(page, 1);
 
     const filter = {};
+
+    /**
+     * The archival filter.
+     *
+     * `active` is the default because "the shipments I am working with" is what
+     * a dashboard list means. Note the `$ne: true` rather than `false`: it also
+     * matches projections written before this field existed, so an older read
+     * model needs no migration to keep listing correctly.
+     *
+     * `all` and `archived` exist because archiving hides a shipment, it does
+     * not destroy it — so the UI must be able to go and look.
+     */
+    if (view === 'active') filter.archived = { $ne: true };
+    else if (view === 'archived') filter.archived = true;
+
     if (state) filter.currentState = state;
     if (search) {
       const escaped = escapeRegex(search);

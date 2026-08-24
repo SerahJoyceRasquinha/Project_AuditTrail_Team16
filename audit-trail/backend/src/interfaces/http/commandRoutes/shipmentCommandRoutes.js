@@ -35,5 +35,24 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
   /** POST /api/shipment/temperature -> TEMPERATURE_RECORDED | TEMPERATURE_SPIKE */
   router.post('/shipment/temperature', asyncHandler(controller.recordTemperature));
 
+  /**
+   * Lifecycle management, added so the dashboard can own the whole shipment
+   * lifecycle without the seed script.
+   *
+   * Note what these are *not*: there is no PUT and no DELETE anywhere on this
+   * router. Editing and removing a shipment are commands that append events,
+   * exactly like moving one, so they are POSTs to named command endpoints and
+   * they read as verbs rather than as mutations of a resource.
+   */
+
+  /** POST /api/shipment/amend -> SHIPMENT_DETAILS_AMENDED */
+  router.post('/shipment/amend', asyncHandler(controller.amend));
+
+  /** POST /api/shipment/archive -> SHIPMENT_ARCHIVED */
+  router.post('/shipment/archive', asyncHandler(controller.archive));
+
+  /** POST /api/shipment/restore -> SHIPMENT_RESTORED */
+  router.post('/shipment/restore', asyncHandler(controller.restore));
+
   return router;
 }

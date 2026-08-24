@@ -195,7 +195,7 @@ the header shows live projection lag at all times.
 
 | Command | Purpose |
 | --- | --- |
-| `npm run seed:http` | Load demonstration shipments over HTTP, against a running server. Works in **both** persistence modes. |
+| `npm run seed:http` | **Optional.** Loads the four demonstration shipments over HTTP against a running server, in either persistence mode. Convenient for a demo with pre-built history; *not required* — shipments are created, amended and archived from the dashboard itself. |
 | `npm run seed` | Same dataset, written directly. Requires `PERSISTENCE=mongo` — an in-memory store is not shared between processes. |
 | `npm run verify:integrity` | Verify every hash chain; non-zero exit on tampering |
 | `npm run rebuild:readmodel` | Destroy and rebuild all projections from history |

@@ -211,6 +211,87 @@ export function ConsistencyBanner({ consistency }) {
 }
 
 /**
+ * Confirmation for the archive/restore actions.
+ *
+ * Archiving *looks* destructive, so it is confirmed — but the copy is careful
+ * not to imply that anything is being destroyed, because nothing is. Telling an
+ * operator "this cannot be undone" here would be a plain lie: the whole point
+ * is that it can, and that the history survives either way.
+ */
+export function ConfirmDialog({
+  open,
+  title,
+  body,
+  confirmLabel,
+  cancelLabel = 'Cancel',
+  tone = 'primary',
+  pending = false,
+  error = null,
+  reason,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onClick={pending ? undefined : onCancel}>
+      <div
+        className="dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        onClick={(bubble) => bubble.stopPropagation()}
+      >
+        <div className="dialog__head">
+          <h2 className="dialog__title" id="confirm-title">
+            {title}
+          </h2>
+        </div>
+
+        <div className="dialog__body">
+          <p style={{ marginTop: 0 }}>{body}</p>
+
+          {onReasonChange ? (
+            <label className="field">
+              <span className="field__label">Reason</span>
+              <input
+                className="input"
+                value={reason}
+                onChange={(bubble) => onReasonChange(bubble.target.value)}
+                placeholder="Claim settled and container released"
+                disabled={pending}
+              />
+              <span className="field__hint">Optional, and recorded in the event.</span>
+            </label>
+          ) : null}
+
+          {error ? (
+            <div className="form-error" role="alert">
+              {error.message}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="dialog__foot">
+          <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={pending}>
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            className={`btn ${tone === 'danger' ? 'btn--danger' : 'btn--primary'}`}
+            onClick={onConfirm}
+            disabled={pending}
+          >
+            {pending ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The OCC conflict dialog (roadmap 13.3).
  *
  * It states both versions, states that nothing was written, and offers the one

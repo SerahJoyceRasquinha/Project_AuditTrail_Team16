@@ -44,6 +44,12 @@ export class ShipmentQueryController {
   };
 
   listShipments = async (req, res) => {
+    // Anything unrecognised falls back to 'active' rather than erroring: a bad
+    // view is a harmless client mistake, and silently listing everything
+    // (including archived shipments) would be the more surprising outcome.
+    const requestedView = String(req.query.view ?? 'active');
+    const view = ['active', 'archived', 'all'].includes(requestedView) ? requestedView : 'active';
+
     const result = await this.#handlers.listShipmentsQueryHandler.handle({
       page: Number.parseInt(req.query.page ?? '1', 10) || 1,
       pageSize: Number.parseInt(req.query.pageSize ?? '20', 10) || 20,
@@ -56,6 +62,7 @@ export class ShipmentQueryController {
       maxTemperature: parseOptionalNumber(req.query.maxTemperature),
       lastEventFrom: req.query.lastEventFrom ?? null,
       lastEventTo: req.query.lastEventTo ?? null,
+      view,
     });
     res.status(200).json(result);
   };

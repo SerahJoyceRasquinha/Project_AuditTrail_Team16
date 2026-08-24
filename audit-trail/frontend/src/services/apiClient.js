@@ -87,6 +87,9 @@ export const listShipments = (params = {}, signal) => {
   if (params.maxTemperature !== '') query.set('maxTemperature', String(params.maxTemperature));
   if (params.lastEventFrom) query.set('lastEventFrom', `${params.lastEventFrom}T00:00:00.000Z`);
   if (params.lastEventTo) query.set('lastEventTo', `${params.lastEventTo}T23:59:59.999Z`);
+  // 'active' is the backend default, so it is only sent when the operator has
+  // explicitly asked to see archived shipments.
+  if (params.view && params.view !== 'active') query.set('view', params.view);
   const suffix = query.toString() ? `?${query}` : '';
   return request(`/api/shipments${suffix}`, { signal });
 };
@@ -124,3 +127,19 @@ export const moveShipment = (command) => request('/api/shipment/move', { method:
 
 export const recordTemperature = (command) =>
   request('/api/shipment/temperature', { method: 'POST', body: command });
+
+/**
+ * Lifecycle management.
+ *
+ * These are POSTs to command endpoints rather than PUT/DELETE on a resource,
+ * because that is what they are: editing and removing a shipment append events
+ * exactly like moving one does. Nothing here mutates a record in place, and
+ * `archive` deletes nothing at all.
+ */
+export const amendShipment = (command) => request('/api/shipment/amend', { method: 'POST', body: command });
+
+export const archiveShipment = (command) =>
+  request('/api/shipment/archive', { method: 'POST', body: command });
+
+export const restoreShipment = (command) =>
+  request('/api/shipment/restore', { method: 'POST', body: command });

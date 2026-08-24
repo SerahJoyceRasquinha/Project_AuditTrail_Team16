@@ -1,7 +1,10 @@
 import {
+  validateAmendShipmentCommand,
+  validateArchiveShipmentCommand,
   validateCreateShipmentCommand,
   validateMoveShipmentCommand,
   validateRecordTemperatureCommand,
+  validateRestoreShipmentCommand,
 } from '../../domain/shipment/validators/commandValidators.js';
 
 /**
@@ -55,5 +58,49 @@ export class RecordTemperatureCommandHandler {
   async handle(rawCommand, context = {}) {
     const command = validateRecordTemperatureCommand(rawCommand);
     return this.#service.recordTemperature(command, context);
+  }
+}
+
+/**
+ * The lifecycle-management handlers. Same three-line shape as the others: the
+ * dashboard's "edit" and "remove" buttons get no privileged path into the
+ * system, only another command.
+ */
+export class AmendShipmentCommandHandler {
+  #service;
+
+  constructor({ shipmentCommandService }) {
+    this.#service = shipmentCommandService;
+  }
+
+  async handle(rawCommand, context = {}) {
+    const command = validateAmendShipmentCommand(rawCommand);
+    return this.#service.amendShipmentDetails(command, context);
+  }
+}
+
+export class ArchiveShipmentCommandHandler {
+  #service;
+
+  constructor({ shipmentCommandService }) {
+    this.#service = shipmentCommandService;
+  }
+
+  async handle(rawCommand, context = {}) {
+    const command = validateArchiveShipmentCommand(rawCommand);
+    return this.#service.archiveShipment(command, context);
+  }
+}
+
+export class RestoreShipmentCommandHandler {
+  #service;
+
+  constructor({ shipmentCommandService }) {
+    this.#service = shipmentCommandService;
+  }
+
+  async handle(rawCommand, context = {}) {
+    const command = validateRestoreShipmentCommand(rawCommand);
+    return this.#service.restoreShipment(command, context);
   }
 }

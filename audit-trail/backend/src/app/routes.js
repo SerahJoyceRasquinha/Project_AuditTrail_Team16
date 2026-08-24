@@ -3,8 +3,10 @@ import { createShipmentCommandRoutes } from '../interfaces/http/commandRoutes/sh
 import { createShipmentQueryRoutes } from '../interfaces/http/queryRoutes/shipmentQueryRoutes.js';
 import { asyncHandler } from '../interfaces/http/middleware/index.js';
 import {
+  AMENDABLE_FIELDS,
   EVENT_CATALOG,
   EVENT_TYPES,
+  LIFECYCLE_POLICY,
   MOVEMENT_TYPES,
   SHIPMENT_STATES,
   TEMPERATURE_POLICY,
@@ -47,6 +49,8 @@ export function registerRoutes({ app, container }) {
       movementTypes: MOVEMENT_TYPES,
       catalog: EVENT_CATALOG,
       temperaturePolicy: TEMPERATURE_POLICY,
+      lifecyclePolicy: LIFECYCLE_POLICY,
+      amendableFields: AMENDABLE_FIELDS,
     });
   });
 

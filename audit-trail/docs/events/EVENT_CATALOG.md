@@ -127,3 +127,74 @@ the hash chain would detect it.
 Corrections follow the same rule: you do not edit a wrong event, you append a
 compensating one. That is a domain decision requiring its own event type, and
 none is defined yet.
+
+
+---
+
+## Lifecycle management events
+
+Added so that the dashboard can own the entire shipment lifecycle without the
+seed script. All three are **design decisions**: the source document names no
+event for editing or removing a shipment, so what "update" and "delete" mean
+here had to be decided explicitly rather than assumed.
+
+### `SHIPMENT_DETAILS_AMENDED`
+
+*Design decision.* The event-sourced answer to "edit this shipment".
+
+| | |
+| --- | --- |
+| Payload | Only the manifest fields that actually changed, plus optional `reason` |
+| Amendable | `containerCode`, `origin`, `destination`, `cargoDescription`, `carrier`, `minTemperatureC`, `maxTemperatureC` |
+| Never amendable | `shipmentId` — it is the aggregate identity |
+| Reducer effect | Overlays the supplied fields. Lifecycle state unchanged. |
+
+The `CONTAINER_CREATED` event is never modified, so a dispute about what was
+*originally* declared stays answerable, and the time scrubber still shows the
+pre-correction values at any instant before the amendment.
+
+Two rules the aggregate enforces:
+
+- **Only real changes are carried.** The stored event reads as a diff.
+- **A no-op amendment is refused.** An audit trail whose value is that every
+  entry means something should not accumulate entries that mean nothing.
+- **A corrected `origin` moves `currentLocation` only while the shipment is
+  still `CREATED`** — i.e. it has never physically moved. Once a movement event
+  exists, location is a movement-derived fact and a manifest correction must not
+  overwrite it.
+
+### `SHIPMENT_ARCHIVED`
+
+*Design decision.* What "delete" means in this system.
+
+| | |
+| --- | --- |
+| Payload | Optional `reason` |
+| Reducer effect | `archived → true`, `archivedAt` recorded. Lifecycle state unchanged. |
+
+Nothing is removed. The stream, the hash chain, the timeline and the scrubber
+all survive; only the shipment's presence in the default active listing changes.
+Archived shipments accept no further `move`, `temperature` or `amend` commands
+until restored.
+
+That the chain still verifies after an archival is asserted by
+`tests/integration/shipmentManagement.test.js` — it is the strongest available
+statement that "delete" destroyed nothing.
+
+### `SHIPMENT_RESTORED`
+
+*Design decision.* Reverses an archival by appending, never by removing the
+`SHIPMENT_ARCHIVED` event.
+
+| | |
+| --- | --- |
+| Payload | Optional `reason` |
+| Reducer effect | `archived → false`, `restoredAt` recorded. Lifecycle state unchanged. |
+
+### Why none of these change `currentState`
+
+For the same reason `TEMPERATURE_SPIKE` does not: the source document defines no
+lifecycle consequence for them. Archival is an administrative fact about the
+ledger, not a physical fact about the container — a container does not stop
+being in transit because someone closed the file on it. Inventing a transition
+would put unsourced business rules into the audit trail.

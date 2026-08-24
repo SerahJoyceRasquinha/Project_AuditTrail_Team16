@@ -38,6 +38,14 @@ export function projectState(state, { lastSequence, workerName }) {
     loadedAt: state.loadedAt,
     arrivedAt: state.arrivedAt,
     unloadedAt: state.unloadedAt,
+    // Archival is derived state like everything else here: the worker computes
+    // it by folding SHIPMENT_ARCHIVED / SHIPMENT_RESTORED, and the list query
+    // filters on it. Nothing outside the reducer ever sets it.
+    archived: state.archived,
+    archivedAt: state.archivedAt,
+    restoredAt: state.restoredAt,
+    amendmentCount: state.amendmentCount,
+    lastAmendedAt: state.lastAmendedAt,
     lastEventAt: state.lastEventAt,
     lastEventType: state.lastEventType,
     projectionMetadata: {
@@ -85,6 +93,11 @@ export function stateFromProjection(projection) {
     loadedAt: projection.loadedAt ?? null,
     arrivedAt: projection.arrivedAt ?? null,
     unloadedAt: projection.unloadedAt ?? null,
+    archived: projection.archived ?? false,
+    archivedAt: projection.archivedAt ?? null,
+    restoredAt: projection.restoredAt ?? null,
+    amendmentCount: projection.amendmentCount ?? 0,
+    lastAmendedAt: projection.lastAmendedAt ?? null,
     lastEventAt: projection.lastEventAt ?? null,
     lastEventType: projection.lastEventType ?? null,
   });
