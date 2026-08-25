@@ -143,3 +143,46 @@ export const archiveShipment = (command) =>
 
 export const restoreShipment = (command) =>
   request('/api/shipment/restore', { method: 'POST', body: command });
+
+export const exportShipment = async (shipmentId, format, signal) => {
+  const url = `${BASE_URL}/api/shipment/${encodeURIComponent(shipmentId)}/export?format=${encodeURIComponent(format)}`;
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    let envelope = {};
+    try {
+      const text = await response.text();
+      envelope = JSON.parse(text).error || {};
+    } catch {
+      // Ignored
+    }
+    throw new ApiError(envelope.message ?? `Request failed with status ${response.status}.`, {
+      status: response.status,
+      code: envelope.code,
+      details: envelope.details,
+    });
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = downloadUrl;
+
+  // Extract filename from header if possible, else fallback
+  const disposition = response.headers.get('content-disposition');
+  let filename = `${shipmentId}-history.${format}`;
+  if (disposition && disposition.indexOf('filename=') !== -1) {
+    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+    const matches = filenameRegex.exec(disposition);
+    if (matches != null && matches[1]) {
+      filename = matches[1].replace(/['"]/g, '');
+    }
+  }
+  a.download = filename;
+
+  document.body.appendChild(a);
+  a.click();
+
+  window.URL.revokeObjectURL(downloadUrl);
+  a.remove();
+};

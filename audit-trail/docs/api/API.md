@@ -226,6 +226,10 @@ a live temperature can never appear beside a historical state.
 Hash-chain verification. `intact: true/false` plus any `issues`
 (`CONTENT_TAMPERED`, `BROKEN_LINK`, `VERSION_GAP`).
 
+### `GET /api/shipment/:id/export?format=csv|pdf`
+
+Downloads a stream of the full shipment event history as a file, along with a human-readable diff of payload changes and the current integrity statement. Returns headers for file download in the browser.
+
 ### `GET /api/shipment/:id/reconciliation`
 
 Compares the projection against a fresh replay. Reports `consistent` and any

@@ -76,4 +76,13 @@ export class ShipmentQueryController {
     const result = await this.#handlers.reconcileShipmentQueryHandler.handle({ shipmentId: req.params.id });
     res.status(200).json(result);
   };
+
+  exportHistory = async (req, res) => {
+    // The query handler generates PDF/CSV streams directly to the response object.
+    await this.#handlers.exportShipmentHistoryQueryHandler.handle({
+      shipmentId: req.params.id,
+      format: req.query.format || 'csv',
+      res,
+    });
+  };
 }

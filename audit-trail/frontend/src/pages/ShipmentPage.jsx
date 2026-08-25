@@ -53,6 +53,7 @@ function ShipmentWorkspace({ shipmentId }) {
   const [dialog, setDialog] = useState(null);
   const [reason, setReason] = useState('');
   const [notice, setNotice] = useState(null);
+  const [exportingFormat, setExportingFormat] = useState(null);
 
   const shipmentQuery = useShipment(shipmentId, refreshToken);
   const eventsQuery = useShipmentEvents(shipmentId, refreshToken);
@@ -127,6 +128,18 @@ function ShipmentWorkspace({ shipmentId }) {
   const onAmended = (result) => {
     setNotice(`Amended as version ${result.version} - the correction is now the newest event below.`);
     store.commandSucceeded();
+  };
+
+  const exportHistory = async (format) => {
+    setExportingFormat(format);
+    try {
+      await api.exportShipment(shipmentId, format);
+      setNotice(`${format.toUpperCase()} audit report downloaded. It contains the complete immutable event history.`);
+    } catch (error) {
+      setNotice(`Could not download the ${format.toUpperCase()} audit report: ${error.message}`);
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   if (shipmentQuery.isLoading && !shipmentQuery.data) {
@@ -331,7 +344,25 @@ function ShipmentWorkspace({ shipmentId }) {
             <div className="panel__head">
               <h2 className="panel__title">Immutable event history</h2>
               <span className="spacer" />
-              <span className="eyebrow mono">{events.length} events</span>
+              <div className="export-actions">
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => exportHistory('csv')}
+                  disabled={Boolean(exportingFormat)}
+                >
+                  {exportingFormat === 'csv' ? 'Preparing CSV…' : 'Export CSV'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => exportHistory('pdf')}
+                  disabled={Boolean(exportingFormat)}
+                >
+                  {exportingFormat === 'pdf' ? 'Preparing PDF…' : 'Export PDF'}
+                </button>
+                <span className="eyebrow mono">{events.length} events · full history</span>
+              </div>
             </div>
             {eventsQuery.isLoading && events.length === 0 ? (
               <LoadingBlock label="Loading events" lines={5} />

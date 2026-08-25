@@ -25,6 +25,7 @@ import {
   VerifyIntegrityQueryHandler,
   ReconcileShipmentQueryHandler,
 } from '../application/queries/queryHandlers.js';
+import { ExportShipmentHistoryQueryHandler } from '../application/queries/exportShipmentHistory.js';
 
 import { ShipmentCommandController } from '../interfaces/http/controllers/shipmentCommandController.js';
 import { ShipmentQueryController } from '../interfaces/http/controllers/shipmentQueryController.js';
@@ -84,6 +85,7 @@ export function buildContainer({ db, config, logger }) {
   const listShipmentsQueryHandler = new ListShipmentsQueryHandler({ readModelRepository });
   const verifyIntegrityQueryHandler = new VerifyIntegrityQueryHandler({ eventStore });
   const reconcileShipmentQueryHandler = new ReconcileShipmentQueryHandler({ reconciliationService });
+  const exportShipmentHistoryQueryHandler = new ExportShipmentHistoryQueryHandler({ replayService, eventStore });
 
   // --- Controllers ----------------------------------------------------------
   const shipmentCommandController = new ShipmentCommandController({
@@ -103,6 +105,7 @@ export function buildContainer({ db, config, logger }) {
     listShipmentsQueryHandler,
     verifyIntegrityQueryHandler,
     reconcileShipmentQueryHandler,
+    exportShipmentHistoryQueryHandler,
   });
 
   // --- Worker ---------------------------------------------------------------
@@ -141,6 +144,7 @@ export function buildContainer({ db, config, logger }) {
       listShipmentsQueryHandler,
       verifyIntegrityQueryHandler,
       reconcileShipmentQueryHandler,
+      exportShipmentHistoryQueryHandler,
     },
     shipmentCommandController,
     shipmentQueryController,

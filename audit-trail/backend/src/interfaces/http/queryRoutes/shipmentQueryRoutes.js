@@ -37,5 +37,8 @@ export function createShipmentQueryRoutes({ controller }) {
   /** GET /api/shipment/:id - current state from the read model (source endpoint) */
   router.get('/shipment/:id', asyncHandler(controller.getShipment));
 
+  /** GET /api/shipment/:id/export?format=... - output history */
+  router.get('/shipment/:id/export', asyncHandler(controller.exportHistory));
+
   return router;
 }

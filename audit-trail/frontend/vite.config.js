@@ -9,8 +9,8 @@ export default defineConfig({
     // the browser only ever sees same-origin requests and CORS never becomes a
     // debugging distraction. In production VITE_API_BASE_URL is used instead.
     proxy: {
-      '/api': { target: 'http://localhost:4000', changeOrigin: true },
-      '/health': { target: 'http://localhost:4000', changeOrigin: true },
+      '/api': { target: 'http://localhost:4001', changeOrigin: true },
+      '/health': { target: 'http://localhost:4001', changeOrigin: true },
     },
   },
   test: {

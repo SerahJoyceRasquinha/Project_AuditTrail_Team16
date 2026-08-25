@@ -1061,6 +1061,13 @@ button {
   margin-bottom: 16px;
 }
 
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .ledger-notice {
   display: flex;
   align-items: center;
@@ -1178,6 +1185,15 @@ button {
 
   .shipment-toolbar .btn,
   .shipment-card__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .export-actions {
+    width: 100%;
+  }
+
+  .export-actions .btn {
     flex: 1 1 auto;
     justify-content: center;
   }
