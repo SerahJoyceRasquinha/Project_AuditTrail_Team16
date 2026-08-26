@@ -68,6 +68,36 @@ export function loadConfig(overrides = {}) {
       name: readString('WORKER_NAME', 'shipment-projection-worker'),
     },
 
+    /**
+     * Automatic temperature monitoring.
+     *
+     * `source` defaults to `simulated` so a fresh checkout demonstrates the
+     * hourly monitoring, the breach path and the alert timeline without needing
+     * hardware. Every reading it produces is stamped SIMULATED in its immutable
+     * payload and labelled as such in the chart, the timeline and the PDF.
+     * Set `SENSOR_SOURCE=none` for a deployment with no sensors - the monitor
+     * then records nothing rather than inventing data.
+     */
+    sensors: {
+      enabled: readBool('SENSOR_MONITOR_ENABLED', true),
+      source: readString('SENSOR_SOURCE', 'simulated'),
+      feedUrl: readString('SENSOR_FEED_URL', ''),
+      timeoutMs: readInt('SENSOR_FEED_TIMEOUT_MS', 5000),
+      /** The required hourly cadence. Lower it to demonstrate faster. */
+      intervalMs: readInt('SENSOR_INTERVAL_MS', 3_600_000),
+      /** How often the monitor looks for shipments that are due a reading. */
+      sweepIntervalMs: readInt('SENSOR_SWEEP_INTERVAL_MS', 60_000),
+      /** Bounds catch-up after downtime so a restart cannot flood a stream. */
+      maxCatchUpReadings: readInt('SENSOR_MAX_CATCHUP', 48),
+      excursionChance: Number(readString('SENSOR_EXCURSION_CHANCE', '0.08')),
+    },
+
+    /** Server-sent events - the near-real-time read-side push. */
+    realtime: {
+      enabled: readBool('REALTIME_ENABLED', true),
+      heartbeatMs: readInt('REALTIME_HEARTBEAT_MS', 25_000),
+    },
+
     /** Roadmap 16 - rate limiting on the command surface. */
     rateLimit: {
       enabled: readBool('RATE_LIMIT_ENABLED', true),
@@ -86,6 +116,15 @@ export function loadConfig(overrides = {}) {
 
   if (!['mongo', 'memory'].includes(config.persistence)) {
     throw new Error(`PERSISTENCE must be 'mongo' or 'memory', received '${config.persistence}'.`);
+  }
+
+  if (!['simulated', 'external', 'none'].includes(config.sensors.source)) {
+    throw new Error(
+      `SENSOR_SOURCE must be 'simulated', 'external' or 'none', received '${config.sensors.source}'.`
+    );
+  }
+  if (config.sensors.source === 'external' && !config.sensors.feedUrl) {
+    throw new Error('SENSOR_FEED_URL is required when SENSOR_SOURCE=external.');
   }
 
   return Object.freeze(config);

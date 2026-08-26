@@ -42,6 +42,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1001',
     containerCode: 'MSKU7845123',
+    estimatedDurationDays: 21,
     origin: 'Chennai, IN',
     destination: 'Rotterdam, NL',
     cargoDescription: 'Pharmaceutical cold chain - vaccine consignment',
@@ -65,6 +66,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1002',
     containerCode: 'TGHU4410982',
+    estimatedDurationDays: 21,
     origin: 'Nhava Sheva, IN',
     destination: 'Jebel Ali, AE',
     cargoDescription: 'Textiles - dry cargo',
@@ -78,6 +80,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1003',
     containerCode: 'CSQU3054383',
+    estimatedDurationDays: 21,
     origin: 'Mundra, IN',
     destination: 'Singapore, SG',
     cargoDescription: 'Frozen seafood',
@@ -95,6 +98,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1004',
     containerCode: 'HLXU8123447',
+    estimatedDurationDays: 21,
     origin: 'Kolkata, IN',
     destination: 'Colombo, LK',
     cargoDescription: 'Machinery parts',
@@ -127,6 +131,7 @@ async function main() {
       const result = await send('shipment/create', {
         occurredAt: hoursAgo(firstStepAt + 2),
         shipmentId: spec.shipmentId,
+        estimatedDurationDays: spec.estimatedDurationDays,
         containerCode: spec.containerCode,
         origin: spec.origin,
         destination: spec.destination,

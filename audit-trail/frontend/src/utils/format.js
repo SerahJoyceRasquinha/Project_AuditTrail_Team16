@@ -56,6 +56,26 @@ export function formatRelative(iso) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+/**
+ * A planned calendar date (`YYYY-MM-DD`).
+ *
+ * Rendered in UTC deliberately. A plan is a calendar day, not an instant, and
+ * parsing it in local time would show a Delhi user one day and a Rotterdam user
+ * another for the same stored value - which is precisely the cross-client
+ * disagreement the timezone policy exists to prevent.
+ */
+export function formatPlanDate(value) {
+  if (!value) return '—';
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 export function formatTemperature(value) {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return `${Number(value).toFixed(1)} °C`;
@@ -69,6 +89,12 @@ export const EVENT_LABELS = {
   TEMPERATURE_SPIKE: 'Temperature spike',
   ARRIVED_AT_PORT: 'Arrived at port',
   UNLOADED_FROM_SHIP: 'Unloaded from ship',
+  SHIPMENT_DETAILS_AMENDED: 'Details amended',
+  SHIPMENT_ARCHIVED: 'Shipment archived',
+  SHIPMENT_RESTORED: 'Shipment restored',
+  SHIPMENT_SCHEDULE_PLANNED: 'Schedule agreed',
+  SHIPMENT_SCHEDULE_REVISED: 'Schedule revised',
+  SHIPMENT_SCHEDULE_EXTENDED: 'Delay recorded',
 };
 
 export const eventLabel = (eventType) => EVENT_LABELS[eventType] ?? eventType;
@@ -94,6 +120,18 @@ export function eventTone(eventType) {
       return 'success';
     case 'TEMPERATURE_RECORDED':
       return 'muted';
+    case 'SHIPMENT_DETAILS_AMENDED':
+      return 'violet';
+    case 'SHIPMENT_ARCHIVED':
+      return 'muted';
+    case 'SHIPMENT_RESTORED':
+      return 'success';
+    case 'SHIPMENT_SCHEDULE_PLANNED':
+      return 'accent';
+    case 'SHIPMENT_SCHEDULE_REVISED':
+      return 'violet';
+    case 'SHIPMENT_SCHEDULE_EXTENDED':
+      return 'danger';
     default:
       return 'accent';
   }
@@ -121,10 +159,40 @@ export function payloadEntries(payload = {}) {
     direction: 'Direction',
     notes: 'Notes',
     yardBlock: 'Yard block',
+    reason: 'Reason',
+    estimatedDurationDays: 'Estimated duration (days)',
+    extensionDays: 'Delay (days)',
+    stage: 'Stage',
+    plannedDate: 'Planned date',
+    varianceDays: 'Variance (days)',
+    source: 'Reading source',
+    schedule: 'Revised schedule',
+    previousSchedule: 'Previous schedule',
+    changedStages: 'Stages changed',
+    note: 'Note',
+    originLocation: 'Origin (structured)',
+    destinationLocation: 'Destination (structured)',
   };
 
   return Object.entries(payload).map(([key, value]) => {
     let display = value;
+    // Schedule payloads carry nested objects; rendering "[object Object]" in an
+    // audit timeline would be worse than useless.
+    if (key === 'schedule' || key === 'previousSchedule') {
+      display = Object.entries(value ?? {})
+        .map(([stage, entry]) => `${stage}: ${entry?.plannedDate ?? '—'}`)
+        .join(', ');
+      return { key, label: labels[key] ?? key, value: display };
+    }
+    if (key === 'originLocation' || key === 'destinationLocation') {
+      return { key, label: labels[key] ?? key, value: value?.display ?? '—' };
+    }
+    if (Array.isArray(value)) {
+      return { key, label: labels[key] ?? key, value: value.join(', ') };
+    }
+    if (key === 'plannedDate') {
+      return { key, label: labels[key], value: formatPlanDate(value) };
+    }
     if (key === 'temperatureC' || key === 'thresholdC' || key === 'minTemperatureC' || key === 'maxTemperatureC') {
       display = formatTemperature(value);
     } else if (key === 'recordedAt') {

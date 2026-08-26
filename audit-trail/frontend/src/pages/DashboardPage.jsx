@@ -1,7 +1,15 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useDebouncedValue, useShipmentList } from '../hooks/useShipmentData.js';
+import { Link, useNavigate } from 'react-router-dom';
+import * as api from '../services/apiClient.js';
+import {
+  useCommand,
+  useDebouncedValue,
+  useLedgerSync,
+  useShipmentList,
+} from '../hooks/useShipmentData.js';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
+import { ShipmentFormDialog } from '../components/ShipmentFormDialog.jsx';
+import { ConfirmDialog, ConflictDialog } from '../components/ShipmentPanels.jsx';
 import { formatRelative, formatTemperature, stateLabel } from '../utils/format.js';
 
 /**
@@ -10,33 +18,78 @@ import { formatRelative, formatTemperature, stateLabel } from '../utils/format.j
  * The search bar is the entry point the source document names: look up a
  * specific shipment ID. The list below it exists so the tool is usable before
  * you know which ID you are investigating.
+ *
+ * Shipment management is built *into* that workflow rather than beside it: the
+ * create action sits next to the search box, and each card carries its own
+ * actions. There is no separate "admin" screen, because there is no separate
+ * concept - creating and amending a shipment are commands like any other.
  */
+const EMPTY_FILTERS = {
+  state: '',
+  origin: '',
+  destination: '',
+  hasBreach: '',
+  minTemperature: '',
+  maxTemperature: '',
+  lastEventFrom: '',
+  lastEventTo: '',
+};
+
+const VIEWS = [
+  { id: 'active', label: 'Active' },
+  { id: 'archived', label: 'Archived' },
+  { id: 'all', label: 'All' },
+];
+
 export function DashboardPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({
-    state: '',
-    origin: '',
-    destination: '',
-    hasBreach: '',
-    minTemperature: '',
-    maxTemperature: '',
-    lastEventFrom: '',
-    lastEventTo: '',
-  });
+  const [view, setView] = useState('active');
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [dialog, setDialog] = useState(null);
+  const [reason, setReason] = useState('');
+  const [notice, setNotice] = useState(null);
+  const [conflict, setConflict] = useState(null);
+
   const debouncedSearch = useDebouncedValue(search, 250);
   const hasFilters = Object.values(filters).some(Boolean);
+
+  // Bumped after every successful command, then bumped again once the
+  // projection worker has caught up - so the list converges on its own.
+  const { token: syncToken, sync, settling } = useLedgerSync();
 
   const { data, status, error, refetch, isLoading } = useShipmentList({
     search: debouncedSearch || undefined,
     page,
     pageSize: 12,
+    view,
+    refreshToken: syncToken,
     ...filters,
   });
 
   const shipments = data?.items ?? [];
   const pagination = data?.pagination;
+
+  const archival = useCommand({
+    onSuccess: (result) => {
+      const archived = result.eventType === 'SHIPMENT_ARCHIVED';
+      setNotice({
+        text: archived
+          ? `${result.aggregateId} archived as version ${result.version}. Its history is untouched - find it under Archived.`
+          : `${result.aggregateId} restored as version ${result.version}.`,
+      });
+      setDialog(null);
+      setReason('');
+      sync();
+    },
+    onConflict: (conflictError) => {
+      setConflict(conflictError);
+      setDialog(null);
+    },
+  });
 
   function updateFilter(name, value) {
     setFilters((current) => ({ ...current, [name]: value }));
@@ -44,18 +97,41 @@ export function DashboardPage() {
   }
 
   function clearFilters() {
-    setFilters({
-      state: '',
-      origin: '',
-      destination: '',
-      hasBreach: '',
-      minTemperature: '',
-      maxTemperature: '',
-      lastEventFrom: '',
-      lastEventTo: '',
-    });
+    setFilters(EMPTY_FILTERS);
     setPage(1);
   }
+
+  function onCreated(result) {
+    setNotice({
+      text: `${result.aggregateId} created - CONTAINER_CREATED appended as version ${result.version}.`,
+    });
+    sync();
+    // Straight to the forensic view of the thing just created. That page reads
+    // through the query handler, which replays the events when the projection
+    // is behind, so the new shipment is visible immediately rather than after
+    // the worker's next poll.
+    navigate(`/shipment/${encodeURIComponent(result.aggregateId)}`);
+  }
+
+  function onAmended(result) {
+    setNotice({
+      text: `${result.aggregateId} amended - SHIPMENT_DETAILS_AMENDED appended as version ${result.version}.`,
+    });
+    sync();
+  }
+
+  const confirmArchival = () => {
+    const shipment = dialog?.shipment;
+    if (!shipment) return;
+    const command = {
+      shipmentId: shipment.aggregateId,
+      reason: reason.trim() || null,
+      expectedVersion: shipment.currentVersion,
+    };
+    archival.execute(() =>
+      dialog.kind === 'archive' ? api.archiveShipment(command) : api.restoreShipment(command)
+    );
+  };
 
   return (
     <>
@@ -67,14 +143,53 @@ export function DashboardPage() {
             setSearch(bubble.target.value);
             setPage(1);
           }}
-          placeholder="Search by shipment ID or container code — e.g. SHP-1001"
+          placeholder="Search by shipment ID or container code - e.g. SHP-1001"
           aria-label="Search shipments"
           spellCheck={false}
         />
         <button type="button" className="btn" onClick={refetch}>
           Refresh
         </button>
+        <button type="button" className="btn btn--primary" onClick={() => setDialog({ kind: 'create' })}>
+          New shipment
+        </button>
       </div>
+
+      <div className="ledger-toolbar">
+        <div className="view-tabs" role="tablist" aria-label="Shipment view">
+          {VIEWS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="tab"
+              aria-selected={view === option.id}
+              className={`btn btn--sm ${view === option.id ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => {
+                setView(option.id);
+                setPage(1);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        {settling ? (
+          <span className="pill pill--amber">
+            <span className="pill__dot" />
+            Synchronising projection
+          </span>
+        ) : null}
+      </div>
+
+      {notice ? (
+        <div className="form-success ledger-notice" role="status">
+          <span>{notice.text}</span>
+          <button type="button" className="btn btn--sm btn--ghost" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       <div className="filter-panel">
         <div className="filter-panel__head">
@@ -84,8 +199,8 @@ export function DashboardPage() {
             onClick={() => setFiltersOpen((open) => !open)}
             aria-expanded={filtersOpen}
           >
-            <span aria-hidden="true">{filtersOpen ? '−' : '+'}</span>
-            Filters {hasFilters ? `· ${Object.values(filters).filter(Boolean).length} active` : ''}
+            <span aria-hidden="true">{filtersOpen ? '\u2212' : '+'}</span>
+            Filters {hasFilters ? `\u00b7 ${Object.values(filters).filter(Boolean).length} active` : ''}
           </button>
           {hasFilters ? (
             <button type="button" className="btn btn--sm btn--ghost" onClick={clearFilters}>
@@ -157,11 +272,26 @@ export function DashboardPage() {
       {status === 'success' && shipments.length === 0 ? (
         <div className="panel">
           <EmptyBlock
-            title={debouncedSearch || hasFilters ? 'No shipment matches these filters' : 'The ledger is empty'}
+            title={
+              debouncedSearch || hasFilters
+                ? 'No shipment matches these filters'
+                : view === 'archived'
+                  ? 'Nothing has been archived'
+                  : 'The ledger is empty'
+            }
             message={
               debouncedSearch || hasFilters
                 ? 'Adjust the search or filters, or clear them to see more of the ledger.'
-                : 'Run `npm run seed:http` in the backend to load the demonstration shipments. It works whether you are running against MongoDB or in memory.'
+                : view === 'archived'
+                  ? 'Archived shipments stay here with their full history intact. Nothing has been withdrawn from the active fleet yet.'
+                  : 'Create the first shipment to append its CONTAINER_CREATED event and open its audit trail.'
+            }
+            action={
+              !debouncedSearch && !hasFilters && view !== 'archived' ? (
+                <button type="button" className="btn btn--primary" onClick={() => setDialog({ kind: 'create' })}>
+                  Create a shipment
+                </button>
+              ) : null
             }
           />
         </div>
@@ -171,33 +301,86 @@ export function DashboardPage() {
         <>
           <div className="shipment-grid">
             {shipments.map((shipment) => (
-              <Link
+              <article
                 key={shipment.aggregateId}
-                to={`/shipment/${encodeURIComponent(shipment.aggregateId)}`}
-                className={`shipment-card ${shipment.temperatureExcursion ? 'shipment-card--breach' : ''}`}
+                className={[
+                  'shipment-card',
+                  shipment.temperatureExcursion ? 'shipment-card--breach' : '',
+                  shipment.archived ? 'shipment-card--archived' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
-                <div className="shipment-card__id">{shipment.aggregateId}</div>
-                <div className="shipment-card__route">
-                  {shipment.origin} → {shipment.destination}
-                </div>
-                <div className="shipment-card__meta">
-                  <span className="pill pill--teal">
-                    <span className="pill__dot" />
-                    {stateLabel(shipment.currentState)}
-                  </span>
-                  <span className="pill">v{shipment.currentVersion}</span>
-                  {shipment.temperatureExcursion ? (
-                    <span className="pill pill--amber">
+                <Link
+                  to={`/shipment/${encodeURIComponent(shipment.aggregateId)}`}
+                  className="shipment-card__link"
+                >
+                  <div className="shipment-card__id">{shipment.aggregateId}</div>
+                  <div className="shipment-card__route">
+                    {shipment.origin} &rarr; {shipment.destination}
+                  </div>
+                  <div className="shipment-card__meta">
+                    <span className={`pill ${shipment.archived ? 'pill--violet' : 'pill--teal'}`}>
                       <span className="pill__dot" />
-                      {shipment.temperatureBreachCount} breach
-                      {shipment.temperatureBreachCount === 1 ? '' : 'es'}
+                      {stateLabel(shipment.currentState)}
                     </span>
-                  ) : null}
+                    <span className="pill">v{shipment.currentVersion}</span>
+                    {shipment.archived ? <span className="pill pill--violet">Archived</span> : null}
+                    {shipment.temperatureExcursion ? (
+                      <span className="pill pill--amber">
+                        <span className="pill__dot" />
+                        {shipment.temperatureBreachCount} breach
+                        {shipment.temperatureBreachCount === 1 ? '' : 'es'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="eyebrow" style={{ marginTop: 10 }}>
+                    {shipment.currentLocation ?? '\u2014'} &middot; {formatTemperature(shipment.latestTemperatureC)} &middot;
+                    updated {formatRelative(shipment.lastEventAt)}
+                  </div>
+                </Link>
+
+                <div className="shipment-card__actions">
+                  <Link
+                    className="btn btn--sm btn--ghost"
+                    to={`/shipment/${encodeURIComponent(shipment.aggregateId)}`}
+                  >
+                    View details
+                  </Link>
+                  {shipment.archived ? (
+                    <button
+                      type="button"
+                      className="btn btn--sm btn--ghost"
+                      onClick={() => {
+                        setReason('');
+                        setDialog({ kind: 'restore', shipment });
+                      }}
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--ghost"
+                        onClick={() => setDialog({ kind: 'amend', shipment })}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--ghost"
+                        onClick={() => {
+                          setReason('');
+                          setDialog({ kind: 'archive', shipment });
+                        }}
+                      >
+                        Archive
+                      </button>
+                    </>
+                  )}
                 </div>
-                <div className="eyebrow" style={{ marginTop: 10 }}>
-                  {formatTemperature(shipment.latestTemperatureC)} · updated {formatRelative(shipment.lastEventAt)}
-                </div>
-              </Link>
+              </article>
             ))}
           </div>
 
@@ -212,7 +395,7 @@ export function DashboardPage() {
                 Previous
               </button>
               <span className="mono">
-                Page {pagination.page} of {pagination.totalPages} · {pagination.total} shipments
+                Page {pagination.page} of {pagination.totalPages} &middot; {pagination.total} shipments
               </span>
               <button
                 type="button"
@@ -226,6 +409,56 @@ export function DashboardPage() {
           ) : null}
         </>
       ) : null}
+
+      {dialog?.kind === 'create' ? (
+        <ShipmentFormDialog
+          mode="create"
+          onClose={() => setDialog(null)}
+          onSucceeded={onCreated}
+          onConflict={setConflict}
+        />
+      ) : null}
+
+      {dialog?.kind === 'amend' ? (
+        <ShipmentFormDialog
+          mode="amend"
+          shipment={dialog.shipment}
+          onClose={() => setDialog(null)}
+          onSucceeded={onAmended}
+          onConflict={setConflict}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={dialog?.kind === 'archive' || dialog?.kind === 'restore'}
+        title={
+          dialog?.kind === 'archive'
+            ? `Archive ${dialog?.shipment?.aggregateId}?`
+            : `Restore ${dialog?.shipment?.aggregateId}?`
+        }
+        body={
+          dialog?.kind === 'archive'
+            ? 'This withdraws the shipment from the active list by appending a SHIPMENT_ARCHIVED event. No event is deleted: the full history, the hash chain and the time scrubber all stay available, and you can restore it at any time.'
+            : 'This appends a SHIPMENT_RESTORED event and returns the shipment to the active list. The earlier archival stays on the record.'
+        }
+        confirmLabel={dialog?.kind === 'archive' ? 'Archive shipment' : 'Restore shipment'}
+        tone={dialog?.kind === 'archive' ? 'danger' : 'primary'}
+        pending={archival.pending}
+        error={archival.error && !archival.error.isConflict ? archival.error : null}
+        reason={reason}
+        onReasonChange={setReason}
+        onConfirm={confirmArchival}
+        onCancel={() => setDialog(null)}
+      />
+
+      <ConflictDialog
+        conflict={conflict}
+        onReload={() => {
+          setConflict(null);
+          sync();
+        }}
+        onDismiss={() => setConflict(null)}
+      />
     </>
   );
 }

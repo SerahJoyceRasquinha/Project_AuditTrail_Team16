@@ -127,3 +127,148 @@ the hash chain would detect it.
 Corrections follow the same rule: you do not edit a wrong event, you append a
 compensating one. That is a domain decision requiring its own event type, and
 none is defined yet.
+
+
+---
+
+## Lifecycle management events
+
+Added so that the dashboard can own the entire shipment lifecycle without the
+seed script. All three are **design decisions**: the source document names no
+event for editing or removing a shipment, so what "update" and "delete" mean
+here had to be decided explicitly rather than assumed.
+
+### `SHIPMENT_DETAILS_AMENDED`
+
+*Design decision.* The event-sourced answer to "edit this shipment".
+
+| | |
+| --- | --- |
+| Payload | Only the manifest fields that actually changed, plus optional `reason` |
+| Amendable | `containerCode`, `origin`, `destination`, `cargoDescription`, `carrier`, `minTemperatureC`, `maxTemperatureC` |
+| Never amendable | `shipmentId` — it is the aggregate identity |
+| Reducer effect | Overlays the supplied fields. Lifecycle state unchanged. |
+
+The `CONTAINER_CREATED` event is never modified, so a dispute about what was
+*originally* declared stays answerable, and the time scrubber still shows the
+pre-correction values at any instant before the amendment.
+
+Two rules the aggregate enforces:
+
+- **Only real changes are carried.** The stored event reads as a diff.
+- **A no-op amendment is refused.** An audit trail whose value is that every
+  entry means something should not accumulate entries that mean nothing.
+- **A corrected `origin` moves `currentLocation` only while the shipment is
+  still `CREATED`** — i.e. it has never physically moved. Once a movement event
+  exists, location is a movement-derived fact and a manifest correction must not
+  overwrite it.
+
+### `SHIPMENT_ARCHIVED`
+
+*Design decision.* What "delete" means in this system.
+
+| | |
+| --- | --- |
+| Payload | Optional `reason` |
+| Reducer effect | `archived → true`, `archivedAt` recorded. Lifecycle state unchanged. |
+
+Nothing is removed. The stream, the hash chain, the timeline and the scrubber
+all survive; only the shipment's presence in the default active listing changes.
+Archived shipments accept no further `move`, `temperature` or `amend` commands
+until restored.
+
+That the chain still verifies after an archival is asserted by
+`tests/integration/shipmentManagement.test.js` — it is the strongest available
+statement that "delete" destroyed nothing.
+
+### `SHIPMENT_RESTORED`
+
+*Design decision.* Reverses an archival by appending, never by removing the
+`SHIPMENT_ARCHIVED` event.
+
+| | |
+| --- | --- |
+| Payload | Optional `reason` |
+| Reducer effect | `archived → false`, `restoredAt` recorded. Lifecycle state unchanged. |
+
+### Why none of these change `currentState`
+
+For the same reason `TEMPERATURE_SPIKE` does not: the source document defines no
+lifecycle consequence for them. Archival is an administrative fact about the
+ledger, not a physical fact about the container — a container does not stop
+being in transit because someone closed the file on it. Inventing a transition
+would put unsourced business rules into the audit trail.
+
+---
+
+## Scheduling events — *design decisions*
+
+Added so a shipment can be *planned* as well as recorded. All three follow the
+same rule as the lifecycle-management events above: they append, they never
+edit, and none of them changes `currentState`.
+
+### `SHIPMENT_SCHEDULE_PLANNED`
+
+The first agreed schedule. Records an intention, not an occurrence — which is
+exactly why it must be an event: six weeks later, when a container is three days
+late, the question is "what did you originally say?", and only an immutable
+record answers it.
+
+| Field | Notes |
+|---|---|
+| `schedule` | Stage-keyed: `{ plannedDate, originalPlannedDate, details }` |
+| `note` | Optional |
+
+One per stream. Reducer: sets `schedule`, captures `originalSchedule` (here and
+nowhere else), sets `schedulePlanned`.
+
+### `SHIPMENT_SCHEDULE_REVISED`
+
+A change to tentative dates for stages that have not happened yet.
+
+| Field | Notes |
+|---|---|
+| `schedule` | The new plan |
+| `previousSchedule` | The plan it replaces — so one event shows the diff |
+| `changedStages` | Which stages moved |
+| `reason` | `REPLAN` \| `DELAY_EXTENSION` \| `EARLY_COMPLETION` |
+
+`originalSchedule` is deliberately untouched. A revision that would change
+nothing is refused: an audit trail whose entries do not each mean something is
+harder to read and proves less.
+
+### `SHIPMENT_SCHEDULE_EXTENDED`
+
+A stage passed its date without being confirmed and the schedule was formally
+extended.
+
+| Field | Notes |
+|---|---|
+| `stage`, `extensionDays` | What was delayed, and by how much |
+| `previousSchedule`, `schedule` | Both sides of the change |
+| `previousEstimatedDurationDays`, `estimatedDurationDays` | Both sides of the duration |
+| `reason` | Optional but strongly encouraged |
+
+This combination is what lets an auditor state, from one record, that a shipment
+was originally expected to finish on one date and was later extended to another,
+by this many days, for this reason.
+
+---
+
+## What is *not* an event
+
+**Overdue status.** No event sets it and no field holds it. A stage is overdue if
+its planned date has passed and its confirming event is absent — derived from
+the stream and the current instant on every read. A stored flag would be wrong
+the moment the clock moved, and correcting it would require a mutation.
+
+---
+
+## Payload additions to existing events
+
+| Event | Added | Why |
+|---|---|---|
+| `CONTAINER_CREATED` | `estimatedDurationDays` | Fixes the planning window. Required. |
+| `CONTAINER_CREATED` | `originLocation`, `destinationLocation` | Normalised country/state codes, stored *alongside* the existing display strings so old streams still replay. |
+| `LOADED_ON_SHIP`, `ARRIVED_AT_PORT`, `UNLOADED_FROM_SHIP` | `plannedDate`, `varianceDays` | The plan the confirmation was measured against, copied in at write time — the plan can be revised later, and "was this late?" must be answerable as it stood *then*. |
+| `TEMPERATURE_RECORDED`, `TEMPERATURE_SPIKE` | `source` | `SIMULATED` \| `EXTERNAL` \| `MANUAL`. Permanent, so simulated data can never be mistaken for measurement. |

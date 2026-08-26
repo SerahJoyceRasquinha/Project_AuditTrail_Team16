@@ -17,6 +17,19 @@ export async function bootstrap({ configOverrides = {}, logger: providedLogger }
   const container = buildContainer({ db, config, logger });
   const app = createApp({ container });
 
+  /**
+   * Advance the identifier counter past any streams that already exist.
+   *
+   * Only an optimisation - the allocator skips taken ids anyway - but without
+   * it a database restored from a dump would make the first few creations walk
+   * through every number the dump already used.
+   */
+  await container.shipmentIdAllocator.syncToExistingStreams().catch((error) => {
+    logger.warn('Could not synchronise the shipment id counter at startup.', {
+      reason: error.message,
+    });
+  });
+
   return {
     app,
     container,
@@ -26,6 +39,7 @@ export async function bootstrap({ configOverrides = {}, logger: providedLogger }
     client,
     persistence,
     shutdown: async () => {
+      await container.temperatureMonitor.stop().catch(() => {});
       await container.projectionWorker.stop().catch(() => {});
       await close();
     },

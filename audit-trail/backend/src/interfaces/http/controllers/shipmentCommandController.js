@@ -10,11 +10,33 @@ export class ShipmentCommandController {
   #createHandler;
   #moveHandler;
   #temperatureHandler;
+  #amendHandler;
+  #archiveHandler;
+  #restoreHandler;
+  #planScheduleHandler;
+  #reviseScheduleHandler;
+  #extendScheduleHandler;
 
-  constructor({ createShipmentCommandHandler, moveShipmentCommandHandler, recordTemperatureCommandHandler }) {
+  constructor({
+    createShipmentCommandHandler,
+    moveShipmentCommandHandler,
+    recordTemperatureCommandHandler,
+    amendShipmentCommandHandler,
+    archiveShipmentCommandHandler,
+    restoreShipmentCommandHandler,
+    planScheduleCommandHandler,
+    reviseScheduleCommandHandler,
+    extendScheduleCommandHandler,
+  }) {
     this.#createHandler = createShipmentCommandHandler;
     this.#moveHandler = moveShipmentCommandHandler;
     this.#temperatureHandler = recordTemperatureCommandHandler;
+    this.#amendHandler = amendShipmentCommandHandler;
+    this.#archiveHandler = archiveShipmentCommandHandler;
+    this.#restoreHandler = restoreShipmentCommandHandler;
+    this.#planScheduleHandler = planScheduleCommandHandler;
+    this.#reviseScheduleHandler = reviseScheduleCommandHandler;
+    this.#extendScheduleHandler = extendScheduleCommandHandler;
   }
 
   create = async (req, res) => {
@@ -29,6 +51,38 @@ export class ShipmentCommandController {
 
   recordTemperature = async (req, res) => {
     const result = await this.#temperatureHandler.handle(req.body, { correlationId: req.correlationId, actor: req.user?.username });
+    res.status(200).json(result);
+  };
+
+  // 200, not 201: an amendment appends an event to a stream that already
+  // exists. Only `create` brings a new resource into being.
+  amend = async (req, res) => {
+    const result = await this.#amendHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  archive = async (req, res) => {
+    const result = await this.#archiveHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  restore = async (req, res) => {
+    const result = await this.#restoreHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  planSchedule = async (req, res) => {
+    const result = await this.#planScheduleHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  reviseSchedule = async (req, res) => {
+    const result = await this.#reviseScheduleHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  extendSchedule = async (req, res) => {
+    const result = await this.#extendScheduleHandler.handle(req.body, { correlationId: req.correlationId });
     res.status(200).json(result);
   };
 }

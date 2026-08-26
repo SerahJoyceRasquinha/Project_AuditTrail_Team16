@@ -29,6 +29,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1001',
     containerCode: 'MSKU7845123',
+    estimatedDurationDays: 21,
     origin: 'Chennai, IN',
     destination: 'Rotterdam, NL',
     cargoDescription: 'Pharmaceutical cold chain - vaccine consignment',
@@ -52,6 +53,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1002',
     containerCode: 'TGHU4410982',
+    estimatedDurationDays: 21,
     origin: 'Nhava Sheva, IN',
     destination: 'Jebel Ali, AE',
     cargoDescription: 'Textiles - dry cargo',
@@ -67,6 +69,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1003',
     containerCode: 'CSQU3054383',
+    estimatedDurationDays: 21,
     origin: 'Mundra, IN',
     destination: 'Singapore, SG',
     cargoDescription: 'Frozen seafood',
@@ -84,6 +87,7 @@ const SHIPMENTS = [
   {
     shipmentId: 'SHP-1004',
     containerCode: 'HLXU8123447',
+    estimatedDurationDays: 21,
     origin: 'Kolkata, IN',
     destination: 'Colombo, LK',
     cargoDescription: 'Machinery parts',
@@ -98,9 +102,14 @@ async function main() {
   const reset = process.argv.includes('--reset');
   const { container, config, logger, shutdown } = await bootstrap();
 
-  if (config.persistence === 'memory') {
+  // `--dry-run` seeds an in-process store and throws it away. It proves the
+  // seed script still works against the current command surface without needing
+  // a MongoDB instance, which is what makes it usable as a regression check.
+  const dryRun = process.argv.includes('--dry-run');
+
+  if (config.persistence === 'memory' && !dryRun) {
     logger.error(
-      'Seeding an in-memory store has no effect once this process exits. Set PERSISTENCE=mongo in your .env before seeding.'
+      'Seeding an in-memory store has no effect once this process exits. Set PERSISTENCE=mongo in your .env before seeding, or pass --dry-run to verify the script.'
     );
     await shutdown();
     process.exit(1);
@@ -140,6 +149,7 @@ async function main() {
       containerCode: spec.containerCode,
       origin: spec.origin,
       destination: spec.destination,
+      estimatedDurationDays: spec.estimatedDurationDays,
       cargoDescription: spec.cargoDescription,
       carrier: spec.carrier,
       minTemperatureC: spec.minTemperatureC,

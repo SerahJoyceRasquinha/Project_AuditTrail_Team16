@@ -20,6 +20,19 @@ async function main() {
     });
   }
 
+  /**
+   * Automatic temperature monitoring.
+   *
+   * Started alongside the API because it is a domain activity, not
+   * infrastructure: a reefer container is being monitored whether or not anyone
+   * has the dashboard open. It issues ordinary commands, so it is subject to
+   * exactly the same validation, versioning and immutability rules as an
+   * operator would be.
+   */
+  if (config.sensors.enabled) {
+    await container.temperatureMonitor.start();
+  }
+
   const server = app.listen(config.port, () => {
     logger.info('Audit Trail API listening.', {
       port: config.port,
@@ -27,6 +40,8 @@ async function main() {
       persistence: config.persistence,
       corsOrigin: config.corsOrigin,
       workerInProcess: config.worker.inProcess && config.worker.enabled,
+      sensorSource: config.sensors.source,
+      temperatureMonitoring: config.sensors.enabled ? 'running' : 'disabled',
     });
   });
 

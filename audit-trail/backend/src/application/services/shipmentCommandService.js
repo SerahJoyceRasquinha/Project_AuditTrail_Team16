@@ -18,10 +18,12 @@ import { newId, nowIso } from '../../shared/utils/index.js';
 export class ShipmentCommandService {
   #eventStore;
   #logger;
+  #idAllocator;
 
-  constructor({ eventStore, logger }) {
+  constructor({ eventStore, logger, shipmentIdAllocator = null }) {
     this.#eventStore = eventStore;
     this.#logger = logger;
+    this.#idAllocator = shipmentIdAllocator;
   }
 
   /** Rebuilds an aggregate from its full stream. */
@@ -117,7 +119,7 @@ export class ShipmentCommandService {
 
   async createShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
-      shipmentId: command.shipmentId,
+      shipmentId,
       // Creation asserts version 0: "I believe this stream does not exist yet."
       expectedVersion: 0,
       requireExisting: false,
@@ -152,6 +154,93 @@ export class ShipmentCommandService {
       actor,
       command,
       decide: (aggregate, context) => aggregate.recordTemperature(command, context),
+    });
+  }
+
+  /**
+   * The three lifecycle-management commands below go through exactly the same
+   * `#execute` path as every other command. That is the point: "edit" and
+   * "delete" get no shortcut, no direct write, and no special case. They load
+   * history, fold it, honour the same OCC check, let the aggregate decide, and
+   * append one event.
+   */
+  async amendShipmentDetails(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'AmendShipmentDetails',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.amendDetails(command, context),
+    });
+  }
+
+  async archiveShipment(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'ArchiveShipment',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.archive(command, context),
+    });
+  }
+
+  async restoreShipment(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'RestoreShipment',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.restore(command, context),
+    });
+  }
+
+  /**
+   * The three scheduling commands.
+   *
+   * They take the identical path as every other command - load the stream, fold
+   * it, check the expected version, let the aggregate decide, append one event.
+   * Planning gets no shortcut into the store, which is the whole reason the
+   * scheduling feature does not quietly reintroduce mutable state.
+   */
+  async planSchedule(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'PlanShipmentSchedule',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.planSchedule(command, context),
+    });
+  }
+
+  async reviseSchedule(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'ReviseShipmentSchedule',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.reviseSchedule(command, context),
+    });
+  }
+
+  async extendSchedule(command, { correlationId } = {}) {
+    return this.#execute({
+      shipmentId: command.shipmentId,
+      expectedVersion: command.expectedVersion,
+      requireExisting: true,
+      commandName: 'ExtendShipmentSchedule',
+      correlationId,
+      command,
+      decide: (aggregate, context) => aggregate.extendSchedule(command, context),
     });
   }
 }

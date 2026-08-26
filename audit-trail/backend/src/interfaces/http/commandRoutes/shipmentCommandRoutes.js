@@ -37,5 +37,45 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
   /** POST /api/shipment/temperature -> TEMPERATURE_RECORDED | TEMPERATURE_SPIKE */
   router.post('/shipment/temperature', asyncHandler(controller.recordTemperature));
 
+  /**
+   * Lifecycle management, added so the dashboard can own the whole shipment
+   * lifecycle without the seed script.
+   *
+   * Note what these are *not*: there is no PUT and no DELETE anywhere on this
+   * router. Editing and removing a shipment are commands that append events,
+   * exactly like moving one, so they are POSTs to named command endpoints and
+   * they read as verbs rather than as mutations of a resource.
+   */
+
+  /** POST /api/shipment/amend -> SHIPMENT_DETAILS_AMENDED */
+  router.post('/shipment/amend', asyncHandler(controller.amend));
+
+  /** POST /api/shipment/archive -> SHIPMENT_ARCHIVED */
+  router.post('/shipment/archive', asyncHandler(controller.archive));
+
+  /** POST /api/shipment/restore -> SHIPMENT_RESTORED */
+  router.post('/shipment/restore', asyncHandler(controller.restore));
+
+  /**
+   * Scheduling.
+   *
+   * These are the endpoints the lifecycle planner talks to, and they are worth
+   * looking at for what they do *not* offer: there is no way to submit an event
+   * type and a payload. A client can ask to plan, revise or extend a schedule -
+   * business intentions - and the backend decides which event, if any, that
+   * legitimately produces. "Append an arbitrary event" is not in the API
+   * surface, which is what stops the richer UI from becoming a thin wrapper
+   * over the Event Store.
+   */
+
+  /** POST /api/shipment/schedule/plan -> SHIPMENT_SCHEDULE_PLANNED */
+  router.post('/shipment/schedule/plan', asyncHandler(controller.planSchedule));
+
+  /** POST /api/shipment/schedule/revise -> SHIPMENT_SCHEDULE_REVISED */
+  router.post('/shipment/schedule/revise', asyncHandler(controller.reviseSchedule));
+
+  /** POST /api/shipment/schedule/extend -> SHIPMENT_SCHEDULE_EXTENDED */
+  router.post('/shipment/schedule/extend', asyncHandler(controller.extendSchedule));
+
   return router;
 }

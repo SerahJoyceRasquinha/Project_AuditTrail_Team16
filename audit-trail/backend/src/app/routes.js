@@ -4,12 +4,16 @@ import { createShipmentQueryRoutes } from '../interfaces/http/queryRoutes/shipme
 import { asyncHandler } from '../interfaces/http/middleware/index.js';
 import { authenticate, requireRole } from '../interfaces/http/middleware/auth.js';
 import {
+  AMENDABLE_FIELDS,
   EVENT_CATALOG,
   EVENT_TYPES,
+  LIFECYCLE_POLICY,
   MOVEMENT_TYPES,
+  SCHEDULE_POLICY,
   SHIPMENT_STATES,
   TEMPERATURE_POLICY,
 } from '../domain/shipment/events/eventTypes.js';
+import { locationCatalogue } from '../domain/shipment/reference/locations.js';
 
 /**
  * Route composition.
@@ -53,8 +57,48 @@ export function registerRoutes({ app, container }) {
       movementTypes: MOVEMENT_TYPES,
       catalog: EVENT_CATALOG,
       temperaturePolicy: TEMPERATURE_POLICY,
+      lifecyclePolicy: LIFECYCLE_POLICY,
+      schedulePolicy: SCHEDULE_POLICY,
+      amendableFields: AMENDABLE_FIELDS,
     });
   });
+
+  /**
+   * GET /api/meta/locations
+   *
+   * The country/subdivision catalogue the create form's dropdowns are built
+   * from. Served from the same module the command validator checks against, so
+   * a country/state pair the UI offers is by construction a pair the backend
+   * accepts - and adding a country is one edit in the domain layer rather than
+   * one per component.
+   *
+   * Cached for a day: this data changes about as often as the map does.
+   */
+  api.get('/meta/locations', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.json(locationCatalogue());
+  });
+
+  /** GET /api/meta/sensors - what the temperature monitor is doing, and where its data comes from. */
+  api.get('/meta/sensors', (req, res) => {
+    res.json({
+      monitor: {
+        running: container.temperatureMonitor.isRunning,
+        ...container.temperatureMonitor.stats,
+      },
+      /**
+       * Stated plainly because it changes how the numbers should be read: a
+       * simulated feed is not evidence about a real container, and the UI
+       * labels it accordingly wherever it appears.
+       */
+      dataIsSimulated: config.sensors.source === 'simulated',
+    });
+  });
+
+  /** GET /api/stream/shipments - SSE notifications for near-real-time refresh. */
+  if (config.realtime.enabled) {
+    api.get('/stream/shipments', shipmentQueryController.stream);
+  }
 
   api.get(
     '/meta/worker',
@@ -100,6 +144,8 @@ export function registerRoutes({ app, container }) {
         persistence: config.persistence,
         database: databaseOk ? 'connected' : 'unavailable',
         worker: container.projectionWorker.isRunning ? 'running' : 'stopped',
+        temperatureMonitor: container.temperatureMonitor.isRunning ? 'running' : 'stopped',
+        sensorSource: config.sensors.source,
         uptimeSeconds: Math.round(process.uptime()),
         timestamp: new Date().toISOString(),
       });

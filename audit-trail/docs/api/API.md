@@ -92,7 +92,128 @@ retroactively reclassify past readings.
 `recordedAt` is when the sensor sampled; the event `timestamp` is when the event
 occurred. Both are kept.
 
-### `occurredAt` — optional, on all three commands
+### `POST /api/shipment/amend`
+
+Corrects the manifest details declared at creation. Emits
+`SHIPMENT_DETAILS_AMENDED`. **The `CONTAINER_CREATED` event is not touched** —
+this appends a new event describing what changed.
+
+```json
+{
+  "shipmentId": "SHP-1001",
+  "destination": "Hamburg, DE",
+  "carrier": "Hapag-Lloyd",
+  "reason": "Consignee redirected the container",
+  "expectedVersion": 4
+}
+```
+
+Amendable fields: `containerCode`, `origin`, `destination`, `cargoDescription`,
+`carrier`, `minTemperatureC`, `maxTemperatureC`. Send only what changes; an
+omitted field is *not amended*, and an empty string is treated the same way
+rather than as a request to blank a stored value.
+
+`shipmentId` is never amendable — it is the aggregate identity, and changing it
+would mean moving the stream rather than correcting it.
+
+Refused with **409 `DOMAIN_RULE_VIOLATION`** if the amendment would change
+nothing, or if the shipment is archived. `expectedVersion` is **required**: an
+amendment is exactly the kind of edit OCC exists to protect.
+
+**200** — same envelope as `move`, with `"eventType": "SHIPMENT_DETAILS_AMENDED"`.
+
+### `POST /api/shipment/schedule/plan`
+
+Records the first tentative schedule for the three lifecycle stages.
+
+```json
+{
+  "shipmentId": "SHP-1",
+  "expectedVersion": 1,
+  "schedule": {
+    "LOAD_ON_SHIP":     { "plannedDate": "2026-03-03", "details": { "vesselName": "MV Ganges Star" } },
+    "ARRIVE_AT_PORT":   { "plannedDate": "2026-03-14", "details": { "portName": "Port of Rotterdam" } },
+    "UNLOAD_FROM_SHIP": { "plannedDate": "2026-03-16", "details": { "yardBlock": "D7" } }
+  }
+}
+```
+
+Emits `SHIPMENT_SCHEDULE_PLANNED`. Only one per stream — later changes are
+revisions, so the original commitment stays readable.
+
+Dates are `YYYY-MM-DD` UTC calendar days and must fall inside the planning
+window (creation day → creation + `estimatedDurationDays`) and follow lifecycle
+order. Both rules are enforced here regardless of what the UI allowed.
+
+**409 codes:** `BEFORE_SHIPMENT_CREATION`, `OUTSIDE_PLANNING_WINDOW`,
+`STAGE_ORDER_VIOLATION`, `STAGE_ALREADY_CONFIRMED`.
+
+---
+
+### `POST /api/shipment/schedule/revise`
+
+Changes tentative dates for stages that have not yet been confirmed. Same body
+as `plan`, plus an optional `reason` (`REPLAN` | `DELAY_EXTENSION` |
+`EARLY_COMPLETION`).
+
+Emits `SHIPMENT_SCHEDULE_REVISED`, carrying `previousSchedule` alongside the new
+one so the change is legible from a single event. A revision that changes
+nothing is refused; a confirmed stage can never be re-planned.
+
+---
+
+### `POST /api/shipment/schedule/extend`
+
+Records a delay against an overdue stage.
+
+```json
+{
+  "shipmentId": "SHP-1",
+  "stage": "LOAD_ON_SHIP",
+  "extensionDays": 3,
+  "reason": "Port congestion at origin",
+  "expectedVersion": 2
+}
+```
+
+Emits `SHIPMENT_SCHEDULE_EXTENDED`. The stage moves by `extensionDays` and every
+later *unconfirmed* stage shifts with it; confirmed stages never move. The
+estimated duration grows so the plan still fits its window, and never shrinks.
+
+`extensionDays` must be a positive whole number — zero, negatives, decimals and
+text are all rejected with 400.
+
+---
+
+### `POST /api/shipment/archive`
+
+The closest thing this API has to "delete", and deliberately not close. Emits
+`SHIPMENT_ARCHIVED`, which withdraws the shipment from the default active
+listing. **No event is removed.** The stream, its hash chain, its timeline and
+its time scrubber all remain fully available, and `GET /api/shipment/:id`
+continues to serve it.
+
+```json
+{ "shipmentId": "SHP-1001", "reason": "Claim settled", "expectedVersion": 5 }
+```
+
+An archived shipment refuses further `move`, `temperature` and `amend` commands
+with **409 `DOMAIN_RULE_VIOLATION`** until it is restored.
+
+### `POST /api/shipment/restore`
+
+Emits `SHIPMENT_RESTORED` and returns the shipment to the active listing. Note
+that this *appends* — it does not remove the `SHIPMENT_ARCHIVED` event. An
+archival that could be undone by deletion would defeat the point of the ledger.
+
+```json
+{ "shipmentId": "SHP-1001", "reason": "Dispute reopened", "expectedVersion": 6 }
+```
+
+There is no `PUT` and no `DELETE` anywhere in this API. Editing and removing a
+shipment are commands that append events, exactly like moving one.
+
+### `occurredAt` — optional, on all commands
 
 When the event happened in the real world, as distinct from when the system
 recorded it. Defaults to now.
@@ -163,23 +284,98 @@ carries the `eventId` and `version` it came from.
 Pass `at` to truncate the series to the same instant as a reconstructed state, so
 a live temperature can never appear beside a historical state.
 
+### `GET /api/shipment/:id/schedule`
+
+The planner's read endpoint: the plan, each stage's status derived against the
+current instant, and the per-stage `bounds` the calendar must respect.
+
+```json
+{
+  "planned": true,
+  "window": { "earliest": "2026-03-01", "latest": "2026-03-21" },
+  "plan": { "LOAD_ON_SHIP": { "plannedDate": "2026-03-03", "originalPlannedDate": "2026-03-03" } },
+  "stages": [
+    { "stage": "LOAD_ON_SHIP", "status": "OVERDUE", "overdueByDays": 5, "isBlocked": false }
+  ],
+  "bounds": { "ARRIVE_AT_PORT": { "selectable": true, "min": "2026-03-03", "max": "2026-03-21" } },
+  "isOverdue": true
+}
+```
+
+`bounds` are computed from the same policy that validates the command, so the
+browser's date pickers cannot offer a date the server would refuse.
+
+Stage statuses: `CONFIRMED`, `IN_PROGRESS`, `PLANNED`, `OVERDUE`, `UNPLANNED`.
+**None of them is stored** — see `docs/architecture/SCHEDULING_AND_MONITORING.md`.
+
+---
+
+### `GET /api/stream/shipments[?shipmentId=SHP-1]`
+
+Server-sent events. Carries *notifications*, not data:
+
+```
+event: shipment
+data: {"aggregateId":"SHP-1","eventType":"LOADED_ON_SHIP","version":5}
+```
+
+The client re-runs its ordinary queries in response. Published by the projection
+worker **after** it commits, so a refetch triggered by a notification finds the
+read model already able to serve it. Disable with `REALTIME_ENABLED=false`; the
+dashboard falls back to polling.
+
+---
+
 ### `GET /api/shipment/:id/integrity`
 
 Hash-chain verification. `intact: true/false` plus any `issues`
 (`CONTENT_TAMPERED`, `BROKEN_LINK`, `VERSION_GAP`).
+
+### `GET /api/shipment/:id/export?format=csv|pdf`
+
+Downloads a stream of the full shipment event history as a file, along with a human-readable diff of payload changes and the current integrity statement. Returns headers for file download in the browser.
 
 ### `GET /api/shipment/:id/reconciliation`
 
 Compares the projection against a fresh replay. Reports `consistent` and any
 field-level `discrepancies`. The Event Store is always treated as authoritative.
 
-### `GET /api/shipments?page=&pageSize=&state=&search=`
+### `GET /api/shipments?page=&pageSize=&state=&search=&view=`
 
 Paginated dashboard list from the read model.
 
 ---
 
+`view` selects the archival slice and defaults to `active`:
+
+| `view` | Returns |
+| --- | --- |
+| `active` *(default)* | Shipments that are not archived |
+| `archived` | Archived shipments only — with their history fully intact |
+| `all` | Everything |
+
+An unrecognised value falls back to `active` rather than erroring: silently
+listing archived shipments would be the more surprising outcome.
+
 ## Meta and operations
+
+### `GET /api/meta/locations`
+
+The country/subdivision/city catalogue the address dropdowns are built from,
+served from the same module the create validator checks against. Cached for a
+day (~32 KB).
+
+Each subdivision carries a `cities` array; countries without subdivisions carry
+theirs at the country level. City lists are **curated suggestions, not a closed
+set** — the backend accepts a city that is absent from them, and the resolved
+location records `cityFromCatalogue` so a report can say how the value was
+entered.
+
+### `GET /api/meta/sensors`
+
+What the temperature monitor is doing, and — stated plainly, because it changes
+how the numbers should be read — whether its data is simulated.
+
 
 | Endpoint | Purpose |
 | --- | --- |

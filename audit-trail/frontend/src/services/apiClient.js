@@ -92,6 +92,9 @@ export const listShipments = (params = {}, signal) => {
   if (params.maxTemperature !== '') query.set('maxTemperature', String(params.maxTemperature));
   if (params.lastEventFrom) query.set('lastEventFrom', `${params.lastEventFrom}T00:00:00.000Z`);
   if (params.lastEventTo) query.set('lastEventTo', `${params.lastEventTo}T23:59:59.999Z`);
+  // 'active' is the backend default, so it is only sent when the operator has
+  // explicitly asked to see archived shipments.
+  if (params.view && params.view !== 'active') query.set('view', params.view);
   const suffix = query.toString() ? `?${query}` : '';
   return request(`/api/shipments${suffix}`, { signal });
 };
@@ -132,3 +135,78 @@ export const moveShipment = (command) => request('/api/shipment/move', { method:
 
 export const recordTemperature = (command) =>
   request('/api/shipment/temperature', { method: 'POST', body: command });
+
+/**
+ * Lifecycle management.
+ *
+ * These are POSTs to command endpoints rather than PUT/DELETE on a resource,
+ * because that is what they are: editing and removing a shipment append events
+ * exactly like moving one does. Nothing here mutates a record in place, and
+ * `archive` deletes nothing at all.
+ */
+export const amendShipment = (command) => request('/api/shipment/amend', { method: 'POST', body: command });
+
+export const archiveShipment = (command) =>
+  request('/api/shipment/archive', { method: 'POST', body: command });
+
+export const restoreShipment = (command) =>
+  request('/api/shipment/restore', { method: 'POST', body: command });
+
+/**
+ * Scheduling commands.
+ *
+ * Business intentions, not event appends. The backend decides which event - if
+ * any - each one legitimately produces, so the planner UI has no more authority
+ * over the ledger than any other client.
+ */
+export const planSchedule = (command) =>
+  request('/api/shipment/schedule/plan', { method: 'POST', body: command });
+
+export const reviseSchedule = (command) =>
+  request('/api/shipment/schedule/revise', { method: 'POST', body: command });
+
+export const extendSchedule = (command) =>
+  request('/api/shipment/schedule/extend', { method: 'POST', body: command });
+
+export const exportShipment = async (shipmentId, format, signal) => {
+  const url = `${BASE_URL}/api/shipment/${encodeURIComponent(shipmentId)}/export?format=${encodeURIComponent(format)}`;
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    let envelope = {};
+    try {
+      const text = await response.text();
+      envelope = JSON.parse(text).error || {};
+    } catch {
+      // Ignored
+    }
+    throw new ApiError(envelope.message ?? `Request failed with status ${response.status}.`, {
+      status: response.status,
+      code: envelope.code,
+      details: envelope.details,
+    });
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = downloadUrl;
+
+  // Extract filename from header if possible, else fallback
+  const disposition = response.headers.get('content-disposition');
+  let filename = `${shipmentId}-audit-report.${format}`;
+  if (disposition && disposition.indexOf('filename=') !== -1) {
+    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+    const matches = filenameRegex.exec(disposition);
+    if (matches != null && matches[1]) {
+      filename = matches[1].replace(/['"]/g, '');
+    }
+  }
+  a.download = filename;
+
+  document.body.appendChild(a);
+  a.click();
+
+  window.URL.revokeObjectURL(downloadUrl);
+  a.remove();
+};

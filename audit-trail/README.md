@@ -85,11 +85,46 @@ npm run start:worker  # terminal 2 — projection worker
 
 ---
 
+## Working with a shipment
+
+The dashboard's shipment screen is organised around the job rather than the
+storage layer:
+
+1. **Create Shipment** — the reference (`SHP-1`, `SHP-2`, …) and the creation
+   timestamp are both assigned by the server. Origin and destination cascade
+   through country → state → city dropdowns, each gated on the one above it
+   (with manual entry available for ports the curated list does not cover); the
+   container code upper-cases as you type. An estimated duration in whole days is required, because it fixes the
+   window every later date is checked against.
+
+2. **Shipment Schedule** — plan tentative dates for *Load on Ship → Arrive at
+   Port → Unload from Ship*. The calendar only offers dates the backend would
+   accept, and dependent stages narrow as earlier ones are chosen.
+
+3. **Lifecycle Stages** — tick a stage when it actually happens. The tick does
+   not write an event: it dispatches a command carrying the version the screen
+   was loaded against, and the backend checks the prerequisite, the duplicate
+   and the version before anything is recorded.
+
+4. **Overdue and delays** — a stage past its date is flagged in red and offers a
+   schedule extension. The extension is an event; the original plan stays
+   readable.
+
+5. **Temperature** — readings are collected automatically on an hourly cadence.
+   Out-of-range readings raise permanent alerts on the timeline, which is what
+   makes "when did the temperature spike?" answerable after the fact.
+
+> **On simulated data.** With `SENSOR_SOURCE=simulated` (the default, so a fresh
+> checkout demonstrates monitoring without hardware) every reading is stamped
+> `SIMULATED` in its immutable payload and labelled "Simulated (not measured)"
+> in the chart, timeline and PDF. Set `SENSOR_SOURCE=none` to record nothing
+> rather than invent anything.
+
 ## Tests
 
 ```bash
-cd backend  && npm test    # 115 tests — no MongoDB needed
-cd frontend && npm test    #  34 tests
+cd backend  && npm test    # 229 tests — no MongoDB needed
+cd frontend && npm test    #  79 tests
 ```
 
 Backend tests use Node's built-in runner against in-memory persistence, through
@@ -99,6 +134,13 @@ the same wiring production uses. Two suites matter most:
   events through the raw driver, and proves the tampering is detected
 - `tests/integration/reconstruction.test.js` — replays raw events with the worker
   stopped, so no read-model assumption can leak into the check
+- `tests/integration/shipmentScheduling.test.js` — fires twenty simultaneous
+  creations and asserts twenty distinct identifiers; rejects out-of-order
+  lifecycle confirmations posted directly to the API; proves a stale version is
+  refused rather than applied
+- `tests/integration/temperatureMonitoring.test.js` — automatic hourly
+  collection, alert creation, duplicate prevention, and a 300-reading history
+  that still produces a readable paginated PDF
 
 ---
 
@@ -195,7 +237,7 @@ the header shows live projection lag at all times.
 
 | Command | Purpose |
 | --- | --- |
-| `npm run seed:http` | Load demonstration shipments over HTTP, against a running server. Works in **both** persistence modes. |
+| `npm run seed:http` | **Optional.** Loads the four demonstration shipments over HTTP against a running server, in either persistence mode. Convenient for a demo with pre-built history; *not required* — shipments are created, amended and archived from the dashboard itself. |
 | `npm run seed` | Same dataset, written directly. Requires `PERSISTENCE=mongo` — an in-memory store is not shared between processes. |
 | `npm run verify:integrity` | Verify every hash chain; non-zero exit on tampering |
 | `npm run rebuild:readmodel` | Destroy and rebuild all projections from history |
@@ -228,6 +270,12 @@ which is why the whole backend is testable without setting any.
 ---
 
 ## Documentation
+
+- [`docs/architecture/SCHEDULING_AND_MONITORING.md`](docs/architecture/SCHEDULING_AND_MONITORING.md)
+  — how planning, delays, temperature monitoring and the audit report stay
+  event-sourced, and the three requirements that were deliberately *not*
+  implemented as written.
+
 
 | Document | Contents |
 | --- | --- |
