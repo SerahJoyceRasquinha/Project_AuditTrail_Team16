@@ -12,6 +12,7 @@
  */
 
 const BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? '';
+const AUTH_TOKEN_KEY = 'audit-trail-token';
 
 export class ApiError extends Error {
   constructor(message, { status, code, details, correlationId } = {}) {
@@ -35,9 +36,13 @@ export class ApiError extends Error {
 async function request(path, { method = 'GET', body, signal } = {}) {
   let response;
   try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
     response = await fetch(`${BASE_URL}${path}`, {
       method,
-      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
     });
@@ -118,15 +123,8 @@ export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal 
 
 export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });
 
-/** The country/subdivision catalogue the address dropdowns are built from. */
-export const getLocationCatalogue = (signal) => request('/api/meta/locations', { signal });
-
-/** What the temperature monitor is doing, and whether its data is simulated. */
-export const getSensorStatus = (signal) => request('/api/meta/sensors', { signal });
-
-/** Plan, derived stage statuses and the bounds the calendar must respect. */
-export const getShipmentSchedule = (shipmentId, signal) =>
-  request(`/api/shipment/${encodeURIComponent(shipmentId)}/schedule`, { signal });
+export const login = (credentials) => request('/api/auth/login', { method: 'POST', body: credentials });
+export const authTokenKey = AUTH_TOKEN_KEY;
 
 // --- Commands (write side) --------------------------------------------------
 

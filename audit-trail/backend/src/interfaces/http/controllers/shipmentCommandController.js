@@ -40,17 +40,17 @@ export class ShipmentCommandController {
   }
 
   create = async (req, res) => {
-    const result = await this.#createHandler.handle(req.body, { correlationId: req.correlationId });
+    const result = await this.#createHandler.handle(req.body, { correlationId: req.correlationId, actor: req.user?.username });
     res.status(201).json(result);
   };
 
   move = async (req, res) => {
-    const result = await this.#moveHandler.handle(req.body, { correlationId: req.correlationId });
+    const result = await this.#moveHandler.handle(req.body, { correlationId: req.correlationId, actor: req.user?.username });
     res.status(200).json(result);
   };
 
   recordTemperature = async (req, res) => {
-    const result = await this.#temperatureHandler.handle(req.body, { correlationId: req.correlationId });
+    const result = await this.#temperatureHandler.handle(req.body, { correlationId: req.correlationId, actor: req.user?.username });
     res.status(200).json(result);
   };
 

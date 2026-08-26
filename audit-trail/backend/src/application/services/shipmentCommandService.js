@@ -39,7 +39,7 @@ export class ShipmentCommandService {
    * a callback rather than a switch statement so that adding a command means
    * adding a handler, not editing this method.
    */
-  async #execute({ shipmentId, expectedVersion, requireExisting, decide, commandName, correlationId, command }) {
+  async #execute({ shipmentId, expectedVersion, requireExisting, decide, commandName, correlationId, actor, command }) {
     const startedAt = Date.now();
     const correlation = correlationId ?? newId();
     const log = this.#logger.child({ correlationId: correlation, command: commandName, aggregateId: shipmentId });
@@ -86,7 +86,7 @@ export class ShipmentCommandService {
       );
     }
 
-    const event = decide(aggregate, { timestamp, correlationId: correlation, causationId: null });
+    const event = decide(aggregate, { timestamp, correlationId: correlation, causationId: null, actor });
 
     const stored = await this.#eventStore.append(event, { expectedVersion: currentVersion });
 
@@ -117,38 +117,7 @@ export class ShipmentCommandService {
     };
   }
 
-  /**
-   * CreateShipment.
-   *
-   * If the command carries no `shipmentId`, one is allocated here from the
-   * atomic counter - so the identifier is assigned by the server at the moment
-   * the command is accepted, never chosen by the client and never derived from
-   * a "highest existing + 1" read that two requests could perform at once.
-   *
-   * The allocation happens *before* the aggregate decides, which means the id
-   * is already fixed when CONTAINER_CREATED is built. It becomes the stream
-   * identity at version 1 and no later command can alter it.
-   */
-  async createShipment(command, { correlationId } = {}) {
-    let shipmentId = command.shipmentId;
-
-    if (!shipmentId) {
-      if (!this.#idAllocator) {
-        throw new ValidationError(
-          "'shipmentId' is required because no identifier allocator is configured.",
-          { field: 'shipmentId' }
-        );
-      }
-      const allocated = await this.#idAllocator.allocate();
-      shipmentId = allocated.shipmentId;
-      this.#logger.info('Allocated a shipment identifier.', {
-        shipmentId,
-        sequence: allocated.sequence,
-      });
-    }
-
-    const resolved = { ...command, shipmentId };
-
+  async createShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId,
       // Creation asserts version 0: "I believe this stream does not exist yet."
@@ -156,30 +125,33 @@ export class ShipmentCommandService {
       requireExisting: false,
       commandName: 'CreateShipment',
       correlationId,
-      command: resolved,
-      decide: (aggregate, context) => aggregate.create(resolved, context),
+      actor,
+      command,
+      decide: (aggregate, context) => aggregate.create(command, context),
     });
   }
 
-  async moveShipment(command, { correlationId } = {}) {
+  async moveShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'MoveShipment',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.move(command, context),
     });
   }
 
-  async recordTemperature(command, { correlationId } = {}) {
+  async recordTemperature(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'RecordTemperature',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.recordTemperature(command, context),
     });

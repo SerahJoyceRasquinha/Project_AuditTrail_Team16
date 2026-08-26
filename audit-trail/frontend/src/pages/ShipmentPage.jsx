@@ -27,8 +27,7 @@ import { ShipmentFormDialog } from '../components/ShipmentFormDialog.jsx';
 import { ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 import { formatTimestamp } from '../utils/format.js';
-import { useShipmentStream } from '../hooks/useShipmentStream.js';
-import { useAsyncResource } from '../hooks/useShipmentData.js';
+import { downloadAuditHistory } from '../utils/exportAudit.js';
 
 export function ShipmentPage() {
   const { id } = useParams();
@@ -375,6 +374,7 @@ function ShipmentWorkspace({ shipmentId }) {
           <div className="panel">
             <div className="panel__head">
               <h2 className="panel__title">Immutable event history</h2>
+              <span className="pill pill--teal">New</span>
               <span className="spacer" />
               <div className="export-actions">
                 <button
@@ -395,6 +395,24 @@ function ShipmentWorkspace({ shipmentId }) {
                 </button>
                 <span className="eyebrow mono">{events.length} events · full history</span>
               </div>
+            </div>
+            <div className="export-actions">
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => downloadAuditHistory(shipmentId, events, 'json')}
+                disabled={events.length === 0}
+              >
+                Export JSON
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => downloadAuditHistory(shipmentId, events, 'csv')}
+                disabled={events.length === 0}
+              >
+                Export CSV
+              </button>
             </div>
             {eventsQuery.isLoading && events.length === 0 ? (
               <LoadingBlock label="Loading events" lines={5} />

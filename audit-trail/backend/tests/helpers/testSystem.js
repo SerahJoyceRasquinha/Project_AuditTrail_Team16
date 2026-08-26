@@ -16,6 +16,7 @@ import { silentLogger } from '../../src/shared/logging/logger.js';
 export async function createTestSystem(overrides = {}) {
   const config = loadConfig({
     persistence: 'memory',
+    auth: { enabled: false },
     logLevel: 'error',
     corsOrigin: '*',
     rateLimit: { enabled: false, windowMs: 60_000, maxRequests: 10_000 },

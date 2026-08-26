@@ -10,6 +10,7 @@ import { ShipmentCommandService } from '../application/services/shipmentCommandS
 import { ReplayService } from '../application/services/replayService.js';
 import { SensorService } from '../application/services/sensorService.js';
 import { ReconciliationService } from '../application/services/reconciliationService.js';
+import { AuthService } from '../application/services/authService.js';
 
 import {
   AmendShipmentCommandHandler,
@@ -78,6 +79,7 @@ export function buildContainer({ db, config, logger }) {
     logger,
     config,
   });
+  const authService = new AuthService(config.auth);
 
   /**
    * The temperature monitor is given the *command service*, not the event
@@ -176,6 +178,7 @@ export function buildContainer({ db, config, logger }) {
     replayService,
     sensorService,
     reconciliationService,
+    authService,
     commandHandlers: {
       createShipmentCommandHandler,
       moveShipmentCommandHandler,

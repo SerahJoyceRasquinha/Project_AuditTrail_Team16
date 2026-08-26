@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createShipmentCommandRoutes } from '../interfaces/http/commandRoutes/shipmentCommandRoutes.js';
 import { createShipmentQueryRoutes } from '../interfaces/http/queryRoutes/shipmentQueryRoutes.js';
 import { asyncHandler } from '../interfaces/http/middleware/index.js';
+import { authenticate, requireRole } from '../interfaces/http/middleware/auth.js';
 import {
   AMENDABLE_FIELDS,
   EVENT_CATALOG,
@@ -22,9 +23,14 @@ import { locationCatalogue } from '../domain/shipment/reference/locations.js';
  * copy of the event catalog.
  */
 export function registerRoutes({ app, container }) {
-  const { config, shipmentCommandController, shipmentQueryController, logger } = container;
+  const { config, shipmentCommandController, shipmentQueryController, logger, authService } = container;
 
   const api = Router();
+
+  api.post('/auth/login', asyncHandler(async (req, res) => {
+    res.json(authService.login(req.body?.username, req.body?.password));
+  }));
+  api.use(authenticate(authService));
 
   // --- Command side ---------------------------------------------------------
   api.use(

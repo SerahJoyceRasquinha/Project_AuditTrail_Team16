@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncHandler, rateLimiter, tagCqrsSide } from '../middleware/index.js';
+import { requireRole } from '../middleware/auth.js';
 
 /**
  * The **Command** router (roadmap 9.4, Week 1).
@@ -17,6 +18,7 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
   const router = Router();
 
   router.use(tagCqrsSide('command'));
+  router.use(requireRole('operator', 'admin'));
   router.use(
     rateLimiter({
       enabled: config.rateLimit.enabled,
