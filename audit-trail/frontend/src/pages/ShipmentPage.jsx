@@ -23,6 +23,7 @@ import {
 import { ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 import { formatTimestamp } from '../utils/format.js';
+import { downloadAuditHistory } from '../utils/exportAudit.js';
 
 export function ShipmentPage() {
   const { id } = useParams();
@@ -204,8 +205,27 @@ function ShipmentWorkspace({ shipmentId }) {
           <div className="panel">
             <div className="panel__head">
               <h2 className="panel__title">Immutable event history</h2>
+              <span className="pill pill--teal">New</span>
               <span className="spacer" />
               <span className="eyebrow mono">{events.length} events</span>
+            </div>
+            <div className="export-actions">
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => downloadAuditHistory(shipmentId, events, 'json')}
+                disabled={events.length === 0}
+              >
+                Export JSON
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => downloadAuditHistory(shipmentId, events, 'csv')}
+                disabled={events.length === 0}
+              >
+                Export CSV
+              </button>
             </div>
             {eventsQuery.isLoading && events.length === 0 ? (
               <LoadingBlock label="Loading events" lines={5} />

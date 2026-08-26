@@ -56,7 +56,7 @@ export class ShipmentAggregate {
    * A stream may only ever have one creation event; re-creating would give the
    * aggregate two origins and make replay ambiguous.
    */
-  create(command, { timestamp, correlationId, causationId } = {}) {
+  create(command, { timestamp, correlationId, causationId, actor } = {}) {
     if (this.#state.exists) {
       throw new DomainRuleViolationError(
         `Shipment '${command.shipmentId}' already exists (currently at version ${this.#state.version}). A stream can contain only one CONTAINER_CREATED event.`,
@@ -71,6 +71,7 @@ export class ShipmentAggregate {
       timestamp,
       correlationId,
       causationId,
+      actor,
       payload: stripNulls({
         containerCode: command.containerCode,
         origin: command.origin,
@@ -91,7 +92,7 @@ export class ShipmentAggregate {
    * describe a physically impossible journey - a container cannot arrive at a
    * port before it was ever loaded.
    */
-  move(command, { timestamp, correlationId, causationId } = {}) {
+  move(command, { timestamp, correlationId, causationId, actor } = {}) {
     this.#assertExists();
 
     const current = this.#state.currentState;
@@ -136,6 +137,7 @@ export class ShipmentAggregate {
       timestamp,
       correlationId,
       causationId,
+      actor,
       payload: stripNulls({
         location: command.location,
         vesselName: command.vesselName,
@@ -156,7 +158,7 @@ export class ShipmentAggregate {
    * later cannot silently reclassify past readings if someone changes a
    * threshold constant.
    */
-  recordTemperature(command, { timestamp, correlationId, causationId } = {}) {
+  recordTemperature(command, { timestamp, correlationId, causationId, actor } = {}) {
     this.#assertExists();
 
     const { minTemperatureC, maxTemperatureC } = this.#state;

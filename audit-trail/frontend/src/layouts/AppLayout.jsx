@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useWorkerStatus } from '../hooks/useShipmentData.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 /**
  * The application shell.
@@ -14,6 +15,7 @@ export function AppLayout() {
   const location = useLocation();
   const worker = useWorkerStatus({ intervalMs: 4000, active: location.pathname !== '/' });
   const behind = worker?.lag?.behindBy ?? 0;
+  const { user, logout } = useAuth();
 
   return (
     <div className="app">
@@ -33,6 +35,8 @@ export function AppLayout() {
         ) : null}
 
         <nav>
+          {user ? <span className="eyebrow">{user.displayName} · {user.role}</span> : null}
+          {user ? <button type="button" className="btn btn--sm btn--ghost" onClick={logout}>Log out</button> : null}
           <Link
             to="/shipments"
             className="btn btn--sm btn--ghost"

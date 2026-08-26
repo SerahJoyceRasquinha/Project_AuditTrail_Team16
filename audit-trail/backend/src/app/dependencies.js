@@ -6,6 +6,7 @@ import { ShipmentCommandService } from '../application/services/shipmentCommandS
 import { ReplayService } from '../application/services/replayService.js';
 import { SensorService } from '../application/services/sensorService.js';
 import { ReconciliationService } from '../application/services/reconciliationService.js';
+import { AuthService } from '../application/services/authService.js';
 
 import {
   CreateShipmentCommandHandler,
@@ -59,6 +60,7 @@ export function buildContainer({ db, config, logger }) {
     logger,
     config,
   });
+  const authService = new AuthService(config.auth);
 
   // --- Command handlers (write side) ---------------------------------------
   const createShipmentCommandHandler = new CreateShipmentCommandHandler({ shipmentCommandService });
@@ -116,6 +118,7 @@ export function buildContainer({ db, config, logger }) {
     replayService,
     sensorService,
     reconciliationService,
+    authService,
     commandHandlers: {
       createShipmentCommandHandler,
       moveShipmentCommandHandler,

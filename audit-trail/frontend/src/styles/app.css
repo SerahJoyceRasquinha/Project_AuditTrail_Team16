@@ -266,6 +266,18 @@ button {
   padding: 18px;
 }
 
+.export-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px;
+  background: linear-gradient(90deg, var(--signal-teal-dim), transparent 70%);
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.export-actions .btn {
+  border-color: rgba(52, 195, 176, 0.5);
+}
+
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

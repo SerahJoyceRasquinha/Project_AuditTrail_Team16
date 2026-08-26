@@ -37,7 +37,7 @@ export class ShipmentCommandService {
    * a callback rather than a switch statement so that adding a command means
    * adding a handler, not editing this method.
    */
-  async #execute({ shipmentId, expectedVersion, requireExisting, decide, commandName, correlationId, command }) {
+  async #execute({ shipmentId, expectedVersion, requireExisting, decide, commandName, correlationId, actor, command }) {
     const startedAt = Date.now();
     const correlation = correlationId ?? newId();
     const log = this.#logger.child({ correlationId: correlation, command: commandName, aggregateId: shipmentId });
@@ -84,7 +84,7 @@ export class ShipmentCommandService {
       );
     }
 
-    const event = decide(aggregate, { timestamp, correlationId: correlation, causationId: null });
+    const event = decide(aggregate, { timestamp, correlationId: correlation, causationId: null, actor });
 
     const stored = await this.#eventStore.append(event, { expectedVersion: currentVersion });
 
@@ -115,7 +115,7 @@ export class ShipmentCommandService {
     };
   }
 
-  async createShipment(command, { correlationId } = {}) {
+  async createShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       // Creation asserts version 0: "I believe this stream does not exist yet."
@@ -123,30 +123,33 @@ export class ShipmentCommandService {
       requireExisting: false,
       commandName: 'CreateShipment',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.create(command, context),
     });
   }
 
-  async moveShipment(command, { correlationId } = {}) {
+  async moveShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'MoveShipment',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.move(command, context),
     });
   }
 
-  async recordTemperature(command, { correlationId } = {}) {
+  async recordTemperature(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'RecordTemperature',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.recordTemperature(command, context),
     });

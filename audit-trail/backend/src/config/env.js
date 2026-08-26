@@ -52,6 +52,9 @@ export function loadConfig(overrides = {}) {
 
     logLevel: readString('LOG_LEVEL', 'info'),
     corsOrigin: readString('CORS_ORIGIN', 'http://localhost:5173'),
+    auth: {
+      enabled: readBool('AUTH_ENABLED', true),
+    },
 
     /** Worker (roadmap 12.3). Polling + checkpoint, per roadmap 26. */
     worker: {
