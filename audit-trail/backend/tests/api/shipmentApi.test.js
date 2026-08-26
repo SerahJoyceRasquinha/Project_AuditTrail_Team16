@@ -34,6 +34,7 @@ test('commands and queries are served by separate routers', async (t) => {
   const command = await http.post('/api/shipment/create', {
     shipmentId: 'SHP-API-1',
     containerCode: 'MSKU1',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
   });
@@ -57,6 +58,7 @@ test('the full command sequence from the source document works over HTTP', async
   const created = await http.post('/api/shipment/create', {
     shipmentId: 'SHP-API-2',
     containerCode: 'MSKU2',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
     minTemperatureC: 2,
@@ -197,6 +199,7 @@ test('a domain rule violation returns 409, distinct from a concurrency conflict'
   const created = await http.post('/api/shipment/create', {
     shipmentId: 'SHP-API-9',
     containerCode: 'C',
+    estimatedDurationDays: 21,
     origin: 'A',
     destination: 'B',
   });

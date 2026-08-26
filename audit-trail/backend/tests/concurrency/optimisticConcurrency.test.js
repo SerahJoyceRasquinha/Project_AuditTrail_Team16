@@ -19,6 +19,7 @@ async function seedInTransit(system, shipmentId) {
   const created = await svc.createShipment({
     shipmentId,
     containerCode: 'MSKU1',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
     minTemperatureC: 2,
@@ -165,12 +166,14 @@ test('creating the same shipment twice concurrently produces one stream', async 
     system.shipmentCommandService.createShipment({
       shipmentId: 'SHP-DUP',
       containerCode: 'A',
+      estimatedDurationDays: 21,
       origin: 'X',
       destination: 'Y',
     }),
     system.shipmentCommandService.createShipment({
       shipmentId: 'SHP-DUP',
       containerCode: 'B',
+      estimatedDurationDays: 21,
       origin: 'X',
       destination: 'Y',
     }),

@@ -51,6 +51,8 @@ export class SensorService {
         direction: event.payload.direction ?? null,
         thresholdC: event.payload.thresholdC ?? null,
         sensorId: event.payload.sensorId ?? null,
+        // Carried through so the chart can label simulated data as simulated.
+        source: event.payload.source ?? 'MANUAL',
       }))
       .sort((a, b) => a.epoch - b.epoch);
 

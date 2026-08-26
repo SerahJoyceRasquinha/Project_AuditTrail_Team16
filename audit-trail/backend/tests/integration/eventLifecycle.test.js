@@ -20,6 +20,7 @@ test('a command travels the whole pipeline and surfaces in the query side', asyn
   await system.commandHandlers.createShipmentCommandHandler.handle({
     shipmentId: 'SHP-FLOW',
     containerCode: 'MSKU9',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
     minTemperatureC: 2,
@@ -200,6 +201,7 @@ test('occurredAt records when an event happened, not when it was written', async
     occurredAt: '2026-03-01T08:00:00.000Z',
     shipmentId: 'SHP-BACKFILL',
     containerCode: 'MSKU1',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
   });
@@ -229,6 +231,7 @@ test('an occurredAt earlier than the previous event is refused', async (t) => {
     occurredAt: '2026-03-05T08:00:00.000Z',
     shipmentId: 'SHP-CHRONO',
     containerCode: 'MSKU1',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
   });
@@ -259,6 +262,7 @@ test('backfilled events give the scrubber a usable time range', async (t) => {
     occurredAt: '2026-03-01T08:00:00.000Z',
     shipmentId: 'SHP-RANGE',
     containerCode: 'MSKU1',
+    estimatedDurationDays: 21,
     origin: 'Chennai',
     destination: 'Rotterdam',
     minTemperatureC: 2,

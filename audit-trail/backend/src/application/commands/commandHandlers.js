@@ -5,6 +5,9 @@ import {
   validateMoveShipmentCommand,
   validateRecordTemperatureCommand,
   validateRestoreShipmentCommand,
+  validatePlanScheduleCommand,
+  validateReviseScheduleCommand,
+  validateExtendScheduleCommand,
 } from '../../domain/shipment/validators/commandValidators.js';
 
 /**
@@ -102,5 +105,49 @@ export class RestoreShipmentCommandHandler {
   async handle(rawCommand, context = {}) {
     const command = validateRestoreShipmentCommand(rawCommand);
     return this.#service.restoreShipment(command, context);
+  }
+}
+
+/**
+ * Scheduling handlers. Same three-line shape as the rest: validate, delegate,
+ * return. The planning UI is richer than the old command panel, but it gets no
+ * richer access - it issues business commands and nothing else.
+ */
+export class PlanScheduleCommandHandler {
+  #service;
+
+  constructor({ shipmentCommandService }) {
+    this.#service = shipmentCommandService;
+  }
+
+  async handle(rawCommand, context = {}) {
+    const command = validatePlanScheduleCommand(rawCommand);
+    return this.#service.planSchedule(command, context);
+  }
+}
+
+export class ReviseScheduleCommandHandler {
+  #service;
+
+  constructor({ shipmentCommandService }) {
+    this.#service = shipmentCommandService;
+  }
+
+  async handle(rawCommand, context = {}) {
+    const command = validateReviseScheduleCommand(rawCommand);
+    return this.#service.reviseSchedule(command, context);
+  }
+}
+
+export class ExtendScheduleCommandHandler {
+  #service;
+
+  constructor({ shipmentCommandService }) {
+    this.#service = shipmentCommandService;
+  }
+
+  async handle(rawCommand, context = {}) {
+    const command = validateExtendScheduleCommand(rawCommand);
+    return this.#service.extendSchedule(command, context);
   }
 }

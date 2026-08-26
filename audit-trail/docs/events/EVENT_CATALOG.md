@@ -198,3 +198,77 @@ lifecycle consequence for them. Archival is an administrative fact about the
 ledger, not a physical fact about the container — a container does not stop
 being in transit because someone closed the file on it. Inventing a transition
 would put unsourced business rules into the audit trail.
+
+---
+
+## Scheduling events — *design decisions*
+
+Added so a shipment can be *planned* as well as recorded. All three follow the
+same rule as the lifecycle-management events above: they append, they never
+edit, and none of them changes `currentState`.
+
+### `SHIPMENT_SCHEDULE_PLANNED`
+
+The first agreed schedule. Records an intention, not an occurrence — which is
+exactly why it must be an event: six weeks later, when a container is three days
+late, the question is "what did you originally say?", and only an immutable
+record answers it.
+
+| Field | Notes |
+|---|---|
+| `schedule` | Stage-keyed: `{ plannedDate, originalPlannedDate, details }` |
+| `note` | Optional |
+
+One per stream. Reducer: sets `schedule`, captures `originalSchedule` (here and
+nowhere else), sets `schedulePlanned`.
+
+### `SHIPMENT_SCHEDULE_REVISED`
+
+A change to tentative dates for stages that have not happened yet.
+
+| Field | Notes |
+|---|---|
+| `schedule` | The new plan |
+| `previousSchedule` | The plan it replaces — so one event shows the diff |
+| `changedStages` | Which stages moved |
+| `reason` | `REPLAN` \| `DELAY_EXTENSION` \| `EARLY_COMPLETION` |
+
+`originalSchedule` is deliberately untouched. A revision that would change
+nothing is refused: an audit trail whose entries do not each mean something is
+harder to read and proves less.
+
+### `SHIPMENT_SCHEDULE_EXTENDED`
+
+A stage passed its date without being confirmed and the schedule was formally
+extended.
+
+| Field | Notes |
+|---|---|
+| `stage`, `extensionDays` | What was delayed, and by how much |
+| `previousSchedule`, `schedule` | Both sides of the change |
+| `previousEstimatedDurationDays`, `estimatedDurationDays` | Both sides of the duration |
+| `reason` | Optional but strongly encouraged |
+
+This combination is what lets an auditor state, from one record, that a shipment
+was originally expected to finish on one date and was later extended to another,
+by this many days, for this reason.
+
+---
+
+## What is *not* an event
+
+**Overdue status.** No event sets it and no field holds it. A stage is overdue if
+its planned date has passed and its confirming event is absent — derived from
+the stream and the current instant on every read. A stored flag would be wrong
+the moment the clock moved, and correcting it would require a mutation.
+
+---
+
+## Payload additions to existing events
+
+| Event | Added | Why |
+|---|---|---|
+| `CONTAINER_CREATED` | `estimatedDurationDays` | Fixes the planning window. Required. |
+| `CONTAINER_CREATED` | `originLocation`, `destinationLocation` | Normalised country/state codes, stored *alongside* the existing display strings so old streams still replay. |
+| `LOADED_ON_SHIP`, `ARRIVED_AT_PORT`, `UNLOADED_FROM_SHIP` | `plannedDate`, `varianceDays` | The plan the confirmation was measured against, copied in at write time — the plan can be revised later, and "was this late?" must be answerable as it stood *then*. |
+| `TEMPERATURE_RECORDED`, `TEMPERATURE_SPIKE` | `source` | `SIMULATED` \| `EXTERNAL` \| `MANUAL`. Permanent, so simulated data can never be mistaken for measurement. |

@@ -55,6 +55,7 @@ export function SensorChart({ series, selectedEventId, onSelectEvent }) {
 
   const { minTemperatureC, maxTemperatureC } = series.range ?? {};
   const hasRange = minTemperatureC !== null && minTemperatureC !== undefined;
+  const simulated = data.some((point) => point.source === 'SIMULATED');
 
   const temperatures = data.map((point) => point.temperatureC);
   const lowest = Math.min(...temperatures, hasRange ? minTemperatureC : Infinity);
@@ -105,6 +106,26 @@ export function SensorChart({ series, selectedEventId, onSelectEvent }) {
               />
             ))}
 
+            {/* The thresholds themselves, drawn as lines rather than only as the
+                edges of the shaded band, so the exact limit a reading breached
+                is legible at a glance. */}
+            {hasRange ? (
+              <ReferenceLine
+                y={maxTemperatureC}
+                stroke="#f0a13c"
+                strokeDasharray="5 3"
+                label={{ value: 'Max', position: 'right', fill: '#f0a13c', fontSize: 10 }}
+              />
+            ) : null}
+            {hasRange ? (
+              <ReferenceLine
+                y={minTemperatureC}
+                stroke="#f0a13c"
+                strokeDasharray="5 3"
+                label={{ value: 'Min', position: 'right', fill: '#f0a13c', fontSize: 10 }}
+              />
+            ) : null}
+
             {selected ? <ReferenceLine x={selected.x} stroke="#34c3b0" strokeWidth={2} /> : null}
 
             <XAxis
@@ -153,11 +174,19 @@ export function SensorChart({ series, selectedEventId, onSelectEvent }) {
         </span>
         {hasRange ? (
           <span className="chart-legend__key">
-            Agreed range {formatTemperature(minTemperatureC)} to {formatTemperature(maxTemperatureC)}
+            Acceptable range {formatTemperature(minTemperatureC)} to {formatTemperature(maxTemperatureC)}
           </span>
         ) : (
           <span className="chart-legend__key">No temperature range was declared for this shipment</span>
         )}
+        {/* Provenance sits in the legend, not only in a tooltip: a reader
+            glancing at the chart must not mistake simulated data for
+            measurement. */}
+        {simulated ? (
+          <span className="chart-legend__key" style={{ color: '#8f7ceb' }}>
+            Readings are simulated, not measured
+          </span>
+        ) : null}
       </div>
 
       {series.truncatedAt ? (
@@ -179,8 +208,11 @@ function SensorTooltip({ active, payload }) {
       <div>{formatTemperature(point.temperatureC)}</div>
       {point.isBreach ? (
         <div style={{ color: '#f0a13c', marginTop: 4 }}>
-          Breach {point.direction === 'ABOVE_MAX' ? 'above' : 'below'} {formatTemperature(point.thresholdC)}
+          Alert: {point.direction === 'ABOVE_MAX' ? 'above' : 'below'} {formatTemperature(point.thresholdC)}
         </div>
+      ) : null}
+      {point.source === 'SIMULATED' ? (
+        <div style={{ color: '#8f7ceb', marginTop: 4, fontSize: 11 }}>Simulated reading</div>
       ) : null}
       <div className="mono" style={{ color: '#6f8497', marginTop: 4 }}>
         v{point.version}

@@ -15,6 +15,7 @@ const VALID_CREATE = {
   containerCode: 'MSKU1234567',
   origin: 'Chennai',
   destination: 'Rotterdam',
+  estimatedDurationDays: 14,
 };
 
 test('a well-formed create command passes and is normalised', () => {
@@ -23,8 +24,16 @@ test('a well-formed create command passes and is normalised', () => {
   assert.equal(command.minTemperatureC, null);
 });
 
-test('a missing shipment id is rejected', () => {
-  assert.throws(() => validateCreateShipmentCommand({ ...VALID_CREATE, shipmentId: undefined }), ValidationError);
+test('an omitted shipment id is allowed, so the server can allocate SHP-N', () => {
+  // Omitting the id is how the dashboard creates a shipment: the identifier is
+  // assigned by the server from an atomic counter rather than typed by a user.
+  const command = validateCreateShipmentCommand({ ...VALID_CREATE, shipmentId: undefined });
+  assert.equal(command.shipmentId, null);
+});
+
+test('a supplied shipment id must still be well-formed', () => {
+  // Backfill and seeding may name their own streams, but not with anything.
+  assert.throws(() => validateCreateShipmentCommand({ ...VALID_CREATE, shipmentId: '!!' }), ValidationError);
 });
 
 test('an injection-shaped shipment id is rejected by the id pattern', () => {

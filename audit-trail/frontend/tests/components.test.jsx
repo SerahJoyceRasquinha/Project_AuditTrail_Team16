@@ -211,10 +211,10 @@ describe('SensorChart', () => {
     summary: { readingCount: 2, breachCount: 1 },
   };
 
-  test('renders the chart and states the agreed range', () => {
+  test('renders the chart and states the acceptable range', () => {
     const { container } = render(<SensorChart series={series} selectedEventId={null} onSelectEvent={() => {}} />);
     expect(container.querySelector('.chart')).toBeTruthy();
-    expect(screen.getByText(/Agreed range/)).toBeInTheDocument();
+    expect(screen.getByText(/Acceptable range/)).toBeInTheDocument();
   });
 
   test('handles a shipment with no readings', () => {

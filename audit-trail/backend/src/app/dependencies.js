@@ -1,6 +1,10 @@
 import { EventStoreRepository } from '../infrastructure/eventStore/eventStoreRepository.js';
 import { ShipmentReadModelRepository } from '../infrastructure/readModel/shipmentReadModelRepository.js';
 import { CheckpointRepository } from '../infrastructure/projections/checkpointRepository.js';
+import { ShipmentIdAllocator } from '../infrastructure/identity/shipmentIdAllocator.js';
+import { ShipmentEventBus } from '../infrastructure/realtime/shipmentEventBus.js';
+import { createSensorProvider } from '../infrastructure/sensors/sensorGateway.js';
+import { TemperatureMonitorService } from '../application/services/temperatureMonitorService.js';
 
 import { ShipmentCommandService } from '../application/services/shipmentCommandService.js';
 import { ReplayService } from '../application/services/replayService.js';
@@ -14,6 +18,9 @@ import {
   MoveShipmentCommandHandler,
   RecordTemperatureCommandHandler,
   RestoreShipmentCommandHandler,
+  PlanScheduleCommandHandler,
+  ReviseScheduleCommandHandler,
+  ExtendScheduleCommandHandler,
 } from '../application/commands/commandHandlers.js';
 
 import {
@@ -24,6 +31,7 @@ import {
   ListShipmentsQueryHandler,
   VerifyIntegrityQueryHandler,
   ReconcileShipmentQueryHandler,
+  GetShipmentScheduleQueryHandler,
 } from '../application/queries/queryHandlers.js';
 import { ExportShipmentHistoryQueryHandler } from '../application/queries/exportShipmentHistory.js';
 
@@ -52,14 +60,35 @@ export function buildContainer({ db, config, logger }) {
   const eventStore = new EventStoreRepository({ db, logger, limits: config.limits });
   const readModelRepository = new ShipmentReadModelRepository({ db, limits: config.limits });
   const checkpointRepository = new CheckpointRepository({ db });
+  const shipmentIdAllocator = new ShipmentIdAllocator({ db, eventStore, logger });
+  const eventBus = new ShipmentEventBus({ logger });
+  const sensorProvider = createSensorProvider({ config, logger });
 
   // --- Application services -------------------------------------------------
-  const shipmentCommandService = new ShipmentCommandService({ eventStore, logger });
+  const shipmentCommandService = new ShipmentCommandService({
+    eventStore,
+    logger,
+    shipmentIdAllocator,
+  });
   const replayService = new ReplayService({ eventStore, logger });
   const sensorService = new SensorService({ eventStore });
   const reconciliationService = new ReconciliationService({
     eventStore,
     readModelRepository,
+    logger,
+    config,
+  });
+
+  /**
+   * The temperature monitor is given the *command service*, not the event
+   * store. That is the whole design in one line: an automated reading takes the
+   * identical validated path a hand-entered one takes, and no background job
+   * has a private door into the ledger.
+   */
+  const temperatureMonitor = new TemperatureMonitorService({
+    eventStore,
+    shipmentCommandService,
+    sensorProvider,
     logger,
     config,
   });
@@ -71,6 +100,9 @@ export function buildContainer({ db, config, logger }) {
   const amendShipmentCommandHandler = new AmendShipmentCommandHandler({ shipmentCommandService });
   const archiveShipmentCommandHandler = new ArchiveShipmentCommandHandler({ shipmentCommandService });
   const restoreShipmentCommandHandler = new RestoreShipmentCommandHandler({ shipmentCommandService });
+  const planScheduleCommandHandler = new PlanScheduleCommandHandler({ shipmentCommandService });
+  const reviseScheduleCommandHandler = new ReviseScheduleCommandHandler({ shipmentCommandService });
+  const extendScheduleCommandHandler = new ExtendScheduleCommandHandler({ shipmentCommandService });
 
   // --- Query handlers (read side) ------------------------------------------
   const getShipmentQueryHandler = new GetShipmentQueryHandler({
@@ -85,6 +117,7 @@ export function buildContainer({ db, config, logger }) {
   const listShipmentsQueryHandler = new ListShipmentsQueryHandler({ readModelRepository });
   const verifyIntegrityQueryHandler = new VerifyIntegrityQueryHandler({ eventStore });
   const reconcileShipmentQueryHandler = new ReconcileShipmentQueryHandler({ reconciliationService });
+  const getShipmentScheduleQueryHandler = new GetShipmentScheduleQueryHandler({ eventStore });
   const exportShipmentHistoryQueryHandler = new ExportShipmentHistoryQueryHandler({ replayService, eventStore });
 
   // --- Controllers ----------------------------------------------------------
@@ -95,6 +128,9 @@ export function buildContainer({ db, config, logger }) {
     amendShipmentCommandHandler,
     archiveShipmentCommandHandler,
     restoreShipmentCommandHandler,
+    planScheduleCommandHandler,
+    reviseScheduleCommandHandler,
+    extendScheduleCommandHandler,
   });
 
   const shipmentQueryController = new ShipmentQueryController({
@@ -105,7 +141,11 @@ export function buildContainer({ db, config, logger }) {
     listShipmentsQueryHandler,
     verifyIntegrityQueryHandler,
     reconcileShipmentQueryHandler,
+    getShipmentScheduleQueryHandler,
     exportShipmentHistoryQueryHandler,
+    // The SSE endpoint needs the bus and the heartbeat interval. Passed as a
+    // named bundle rather than smuggled in as a handler, because it is not one.
+    realtime: { eventBus, config, logger },
   });
 
   // --- Worker ---------------------------------------------------------------
@@ -115,6 +155,10 @@ export function buildContainer({ db, config, logger }) {
     checkpointRepository,
     logger,
     config,
+    // Notifications are published by the worker *after* the projection is
+    // committed, so a client that refetches on the hint finds the read model
+    // already able to serve it.
+    eventBus,
   });
 
   return {
@@ -124,6 +168,10 @@ export function buildContainer({ db, config, logger }) {
     eventStore,
     readModelRepository,
     checkpointRepository,
+    shipmentIdAllocator,
+    eventBus,
+    sensorProvider,
+    temperatureMonitor,
     shipmentCommandService,
     replayService,
     sensorService,
@@ -135,6 +183,9 @@ export function buildContainer({ db, config, logger }) {
       amendShipmentCommandHandler,
       archiveShipmentCommandHandler,
       restoreShipmentCommandHandler,
+      planScheduleCommandHandler,
+      reviseScheduleCommandHandler,
+      extendScheduleCommandHandler,
     },
     queryHandlers: {
       getShipmentQueryHandler,
@@ -144,6 +195,7 @@ export function buildContainer({ db, config, logger }) {
       listShipmentsQueryHandler,
       verifyIntegrityQueryHandler,
       reconcileShipmentQueryHandler,
+      getShipmentScheduleQueryHandler,
       exportShipmentHistoryQueryHandler,
     },
     shipmentCommandController,

@@ -13,6 +13,9 @@ export class ShipmentCommandController {
   #amendHandler;
   #archiveHandler;
   #restoreHandler;
+  #planScheduleHandler;
+  #reviseScheduleHandler;
+  #extendScheduleHandler;
 
   constructor({
     createShipmentCommandHandler,
@@ -21,6 +24,9 @@ export class ShipmentCommandController {
     amendShipmentCommandHandler,
     archiveShipmentCommandHandler,
     restoreShipmentCommandHandler,
+    planScheduleCommandHandler,
+    reviseScheduleCommandHandler,
+    extendScheduleCommandHandler,
   }) {
     this.#createHandler = createShipmentCommandHandler;
     this.#moveHandler = moveShipmentCommandHandler;
@@ -28,6 +34,9 @@ export class ShipmentCommandController {
     this.#amendHandler = amendShipmentCommandHandler;
     this.#archiveHandler = archiveShipmentCommandHandler;
     this.#restoreHandler = restoreShipmentCommandHandler;
+    this.#planScheduleHandler = planScheduleCommandHandler;
+    this.#reviseScheduleHandler = reviseScheduleCommandHandler;
+    this.#extendScheduleHandler = extendScheduleCommandHandler;
   }
 
   create = async (req, res) => {
@@ -59,6 +68,21 @@ export class ShipmentCommandController {
 
   restore = async (req, res) => {
     const result = await this.#restoreHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  planSchedule = async (req, res) => {
+    const result = await this.#planScheduleHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  reviseSchedule = async (req, res) => {
+    const result = await this.#reviseScheduleHandler.handle(req.body, { correlationId: req.correlationId });
+    res.status(200).json(result);
+  };
+
+  extendSchedule = async (req, res) => {
+    const result = await this.#extendScheduleHandler.handle(req.body, { correlationId: req.correlationId });
     res.status(200).json(result);
   };
 }

@@ -32,6 +32,7 @@ describe('shipment management lifecycle (create / amend / archive / restore)', (
     const response = await http.post('/api/shipment/create', {
       shipmentId: ID,
       containerCode: 'MSKU1111111',
+      estimatedDurationDays: 21,
       origin: 'Chennai, IN',
       destination: 'Rotterdam, NL',
       carrier: 'Maersk Line',
@@ -253,6 +254,7 @@ describe('shipment management lifecycle (create / amend / archive / restore)', (
     const duplicate = await http.post('/api/shipment/create', {
       shipmentId: ID,
       containerCode: 'X1',
+      estimatedDurationDays: 21,
       origin: 'a',
       destination: 'b',
     });

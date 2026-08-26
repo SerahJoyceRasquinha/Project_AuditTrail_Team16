@@ -85,4 +85,65 @@ export class ShipmentQueryController {
       res,
     });
   };
+
+  /**
+   * GET /api/shipment/:id/schedule - the planner's read model.
+   *
+   * Returns the plan, every stage's derived status against the current instant,
+   * and the bounds the calendar must respect. The browser narrows its date
+   * pickers from exactly these numbers, so the UI and the backend agree on what
+   * is selectable without the rules being written twice.
+   */
+  getSchedule = async (req, res) => {
+    const result = await this.#handlers.getShipmentScheduleQueryHandler.handle({
+      shipmentId: req.params.id,
+    });
+    res.status(200).json(result);
+  };
+
+  /**
+   * GET /api/stream/shipments - server-sent events.
+   *
+   * A notification channel, not a data channel: each message says which
+   * shipment reached which version, and the browser responds by re-running its
+   * ordinary queries. That keeps the read model the thing being read and leaves
+   * CQRS intact, while removing the poll-interval delay between one operator
+   * confirming a stage and another seeing it.
+   */
+  stream = async (req, res) => {
+    const { eventBus, config, logger } = this.#handlers.realtime;
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      // Nginx and friends buffer by default, which would defeat the point.
+      'X-Accel-Buffering': 'no',
+    });
+
+    const send = (event, data) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    send('connected', { at: new Date().toISOString(), shipmentId: req.query.shipmentId ?? null });
+
+    const unsubscribe = eventBus.subscribe((notification) => send('shipment', notification), {
+      aggregateId: req.query.shipmentId ?? null,
+    });
+
+    // Keeps intermediaries from closing an idle connection, and lets the client
+    // notice a dead link rather than waiting forever on a socket that will
+    // never speak again.
+    const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), config.realtime.heartbeatMs);
+
+    const close = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      logger.debug('Realtime subscriber disconnected.');
+    };
+
+    req.on('close', close);
+    req.on('error', close);
+  };
 }

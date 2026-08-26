@@ -14,7 +14,7 @@ import { ShipmentStoreProvider, useShipmentStore } from '../store/shipmentStore.
 import { EventTimeline } from '../components/EventTimeline.jsx';
 import { StateScrubber } from '../components/StateScrubber.jsx';
 import { SensorChart } from '../components/SensorChart.jsx';
-import { CommandPanel } from '../components/CommandPanel.jsx';
+import { LifecyclePlanner } from '../components/LifecyclePlanner.jsx';
 import {
   ConfirmDialog,
   ConflictDialog,
@@ -27,6 +27,8 @@ import { ShipmentFormDialog } from '../components/ShipmentFormDialog.jsx';
 import { ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 import { formatTimestamp } from '../utils/format.js';
+import { useShipmentStream } from '../hooks/useShipmentStream.js';
+import { useAsyncResource } from '../hooks/useShipmentData.js';
 
 export function ShipmentPage() {
   const { id } = useParams();
@@ -61,6 +63,25 @@ function ShipmentWorkspace({ shipmentId }) {
   const sensorQuery = useSensorSeries(shipmentId, store.isHistorical ? store.scrubAt : null, refreshToken);
   const integrityQuery = useIntegrity(shipmentId, refreshToken);
   const reconciliationQuery = useReconciliation(shipmentId, refreshToken);
+  const scheduleQuery = useAsyncResource(
+    (signal) => api.getShipmentSchedule(shipmentId, signal),
+    [shipmentId, refreshToken],
+    { enabled: Boolean(shipmentId), keepPreviousData: true }
+  );
+
+  /**
+   * Near-real-time updates.
+   *
+   * The stream carries notifications, not data: when it says this shipment
+   * reached a new version, the page re-runs the queries it already had. If the
+   * stream cannot connect, `connected` is false and the existing refresh path
+   * still works - so the dashboard degrades to its previous behaviour rather
+   * than going quiet.
+   */
+  const stream = useShipmentStream({
+    shipmentId,
+    onNotification: () => store.commandSucceeded(),
+  });
 
   const events = eventsQuery.data?.events ?? [];
   const bounds = eventsQuery.data?.bounds ?? null;
@@ -170,6 +191,9 @@ function ShipmentWorkspace({ shipmentId }) {
           ← All shipments
         </Link>
         <span className="spacer" />
+        <span className="eyebrow" title={stream.connected ? 'Updates arrive as they happen.' : 'Falling back to periodic refresh.'}>
+          {stream.connected ? '● Live' : '○ Periodic refresh'}
+        </span>
 
         {/* Management actions live here, beside the record they act on, rather
             than on a separate screen. They are disabled while the scrubber is
@@ -323,17 +347,25 @@ function ShipmentWorkspace({ shipmentId }) {
 
           <div className="panel">
             <div className="panel__head">
-              <h2 className="panel__title">Append a command</h2>
+              <h2 className="panel__title">Shipment Schedule</h2>
+              <span className="spacer" />
+              {scheduleQuery.data?.isOverdue ? (
+                <span className="pill pill--danger">
+                  <span className="pill__dot" />
+                  Overdue
+                </span>
+              ) : null}
             </div>
-            <CommandPanel
-              shipment={shipmentQuery.data?.shipment}
+            <LifecyclePlanner
+              shipmentId={shipmentId}
+              schedule={scheduleQuery.data}
               disabled={store.isHistorical || isArchived}
               disabledReason={
                 isArchived
-                  ? 'This shipment is archived, so it accepts no further movements or readings. Restore it to resume recording - its history is unchanged either way.'
-                  : 'Return to the live view before appending events. A command issued from a historical view would carry a version that is no longer current.'
+                  ? 'This shipment is archived, so it accepts no further changes. Restore it to resume - its history is unchanged either way.'
+                  : 'Return to the live view before making changes. A command issued from a historical view would carry a version that is no longer current.'
               }
-              onCommandSucceeded={store.commandSucceeded}
+              onChanged={store.commandSucceeded}
               onConflict={store.commandConflicted}
             />
           </div>

@@ -71,10 +71,34 @@ export async function ensureIndexes({ db, logger }) {
   await events.createIndex({ aggregateId: 1, timestamp: 1 }, { name: 'aggregate_timestamp' });
   await events.createIndex({ sequence: 1 }, { unique: true, name: 'uniq_global_sequence' });
   await events.createIndex({ eventType: 1, timestamp: 1 }, { name: 'event_type_timestamp' });
+  /**
+   * Serves the two access patterns the scheduling and temperature features
+   * added: "every temperature event for this shipment, in order" (the chart and
+   * the PDF's monitoring section) and "every schedule change for this shipment"
+   * (the plan-versus-outcome comparison). Both filter by aggregate *and* type,
+   * which the single-field type index above cannot satisfy efficiently.
+   */
+  await events.createIndex(
+    { aggregateId: 1, eventType: 1, version: 1 },
+    { name: 'aggregate_type_version' }
+  );
 
   const readModel = db.collection(COLLECTIONS.readModel);
   await readModel.createIndex({ aggregateId: 1 }, { unique: true, name: 'uniq_read_model_aggregate' });
   await readModel.createIndex({ currentState: 1, lastEventAt: -1 }, { name: 'state_last_event' });
+  /**
+   * Container-code lookup. Not unique: a physical container is reused across
+   * many voyages over its life, so uniqueness would be wrong as a domain claim.
+   * Consistency of *casing* is enforced by normalisation at the command
+   * boundary instead, which is where it belongs.
+   */
+  await readModel.createIndex({ containerCode: 1 }, { name: 'read_model_container_code' });
+  /** Backs the dashboard's "what is due or overdue" ordering. */
+  await readModel.createIndex(
+    { 'schedule.nextPlannedDate': 1, currentState: 1 },
+    { name: 'read_model_next_planned' }
+  );
+  await readModel.createIndex({ latestTemperatureAt: -1 }, { name: 'read_model_latest_reading' });
 
   const checkpoints = db.collection(COLLECTIONS.checkpoints);
   await checkpoints.createIndex({ workerName: 1 }, { unique: true, name: 'uniq_worker' });

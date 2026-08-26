@@ -32,8 +32,9 @@ sequence.
 ### Write path
 
 ```
-React CommandPanel
+React LifecyclePlanner  ─────── the operator ticks "Load on Ship"
    │  POST /api/shipment/move { shipmentId, movementType, location, expectedVersion }
+   │  (a checkbox dispatches a command; it never writes an event)
    ▼
 Command router  ────────────── separate Express Router, no query handler in scope
    ▼

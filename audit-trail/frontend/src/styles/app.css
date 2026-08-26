@@ -905,8 +905,19 @@ button {
   background: rgba(4, 8, 12, 0.72);
 }
 
+/*
+ * The dialog is a flex column with a bounded height so that only the *body*
+ * scrolls. Scrolling the whole dialog (which is what the mobile rule below used
+ * to do) pushes the title and the Create/Cancel buttons off-screen, so a long
+ * form leaves the user scrolled to the bottom of a box with no visible way to
+ * submit it. Pinning the header and footer keeps the action reachable at every
+ * scroll position.
+ */
 .dialog {
   width: min(520px, 100%);
+  max-height: min(88vh, 900px);
+  display: flex;
+  flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--signal-red);
   border-radius: var(--radius-lg);
@@ -914,6 +925,7 @@ button {
 }
 
 .dialog__head {
+  flex: 0 0 auto;
   padding: 16px 20px;
   border-bottom: 1px solid var(--rule);
 }
@@ -925,6 +937,13 @@ button {
 }
 
 .dialog__body {
+  flex: 1 1 auto;
+  /* The only scrolling region. min-height:0 is required: without it a flex
+     child refuses to shrink below its content height and the overflow never
+     engages. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   color: var(--paper-dim);
 }
@@ -942,11 +961,17 @@ button {
 }
 
 .dialog__foot {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px;
   border-top: 1px solid var(--rule);
+  /* Sits on the panel colour so body content scrolling underneath does not
+     show through the gap between buttons. */
+  background: var(--panel);
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
 }
 
 /* ------------------------------------------------------------ integrity -- */
@@ -1179,8 +1204,7 @@ button {
   }
 
   .dialog {
-    max-height: 88vh;
-    overflow-y: auto;
+    max-height: 92vh;
   }
 
   .shipment-toolbar .btn,
@@ -1197,4 +1221,220 @@ button {
     flex: 1 1 auto;
     justify-content: center;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Shipment schedule / lifecycle planner
+   ---------------------------------------------------------------------------
+   Replaces the old command panel. The visual job here is to make the lifecycle
+   *sequence* obvious and to make status differences legible at a glance -
+   planned, in progress, overdue, completed - because that is the distinction an
+   operator scans for and the one the old panel left them to work out.
+   --------------------------------------------------------------------------- */
+
+.form-section {
+  margin: 20px 0 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.form-grid--tight {
+  gap: 10px;
+}
+
+.location-fields {
+  border: 1px solid var(--hairline, #24333f);
+  border-radius: 10px;
+  padding: 12px 14px 4px;
+  margin: 0 0 8px;
+}
+
+.location-fields__legend {
+  padding: 0 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.lifecycle__planner,
+.lifecycle__status,
+.lifecycle__extend {
+  margin-bottom: 18px;
+}
+
+.lifecycle__extend {
+  border: 1px solid var(--signal-amber, #f0a13c);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(240, 161, 60, 0.06);
+}
+
+.lifecycle__stage {
+  border-left: 2px solid var(--hairline, #24333f);
+  padding: 10px 0 10px 14px;
+  margin-bottom: 6px;
+}
+
+.lifecycle__stage--done {
+  border-left-color: var(--signal-teal, #34c3b0);
+  opacity: 0.75;
+}
+
+.lifecycle__stage-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+/* The numbered step is what makes the order visually obvious rather than
+   implied by reading the labels. */
+.lifecycle__step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--hairline, #24333f);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.lifecycle__stage--done .lifecycle__step {
+  background: var(--signal-teal, #34c3b0);
+  color: #04212a;
+}
+
+.lifecycle__blurb {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--paper-dim);
+}
+
+.lifecycle__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.stage-card {
+  border: 1px solid var(--hairline, #24333f);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.stage-card--done {
+  border-color: rgba(52, 195, 176, 0.45);
+}
+
+/* Overdue is the one state that must be impossible to miss. */
+.stage-card--overdue {
+  border-color: var(--signal-red, #e4573d);
+  background: rgba(228, 87, 61, 0.07);
+}
+
+.stage-card__check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.stage-card__check input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+}
+
+.stage-card__check input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.stage-card__title {
+  font-weight: 600;
+}
+
+.stage-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 10px 0 0;
+}
+
+.stage-card__meta dt {
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.stage-card__meta dd {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+}
+
+/* A superseded date is struck rather than removed: the original plan stays
+   visible, which is the same principle the event store follows. */
+.stage-card__struck {
+  text-decoration: line-through;
+  color: var(--paper-dim);
+}
+
+.stage-card__details,
+.stage-card__note {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--paper-dim);
+}
+
+.stage-card__warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(228, 87, 61, 0.12);
+  color: var(--signal-red, #e4573d);
+  font-size: 0.82rem;
+}
+
+.pill--danger {
+  background: rgba(228, 87, 61, 0.16);
+  color: var(--signal-red, #e4573d);
+}
+
+.pill--success {
+  background: rgba(52, 195, 176, 0.16);
+  color: var(--signal-teal, #34c3b0);
+}
+
+.pill--muted {
+  background: rgba(111, 132, 151, 0.16);
+  color: var(--paper-dim);
+}
+
+.pill--accent {
+  background: rgba(52, 195, 176, 0.12);
+  color: var(--signal-teal, #34c3b0);
+}
+
+/* The manual city input appears beneath its select when "Other" is chosen. */
+.location-fields__custom-city {
+  margin-top: 8px;
 }

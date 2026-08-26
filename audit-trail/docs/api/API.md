@@ -122,6 +122,69 @@ amendment is exactly the kind of edit OCC exists to protect.
 
 **200** — same envelope as `move`, with `"eventType": "SHIPMENT_DETAILS_AMENDED"`.
 
+### `POST /api/shipment/schedule/plan`
+
+Records the first tentative schedule for the three lifecycle stages.
+
+```json
+{
+  "shipmentId": "SHP-1",
+  "expectedVersion": 1,
+  "schedule": {
+    "LOAD_ON_SHIP":     { "plannedDate": "2026-03-03", "details": { "vesselName": "MV Ganges Star" } },
+    "ARRIVE_AT_PORT":   { "plannedDate": "2026-03-14", "details": { "portName": "Port of Rotterdam" } },
+    "UNLOAD_FROM_SHIP": { "plannedDate": "2026-03-16", "details": { "yardBlock": "D7" } }
+  }
+}
+```
+
+Emits `SHIPMENT_SCHEDULE_PLANNED`. Only one per stream — later changes are
+revisions, so the original commitment stays readable.
+
+Dates are `YYYY-MM-DD` UTC calendar days and must fall inside the planning
+window (creation day → creation + `estimatedDurationDays`) and follow lifecycle
+order. Both rules are enforced here regardless of what the UI allowed.
+
+**409 codes:** `BEFORE_SHIPMENT_CREATION`, `OUTSIDE_PLANNING_WINDOW`,
+`STAGE_ORDER_VIOLATION`, `STAGE_ALREADY_CONFIRMED`.
+
+---
+
+### `POST /api/shipment/schedule/revise`
+
+Changes tentative dates for stages that have not yet been confirmed. Same body
+as `plan`, plus an optional `reason` (`REPLAN` | `DELAY_EXTENSION` |
+`EARLY_COMPLETION`).
+
+Emits `SHIPMENT_SCHEDULE_REVISED`, carrying `previousSchedule` alongside the new
+one so the change is legible from a single event. A revision that changes
+nothing is refused; a confirmed stage can never be re-planned.
+
+---
+
+### `POST /api/shipment/schedule/extend`
+
+Records a delay against an overdue stage.
+
+```json
+{
+  "shipmentId": "SHP-1",
+  "stage": "LOAD_ON_SHIP",
+  "extensionDays": 3,
+  "reason": "Port congestion at origin",
+  "expectedVersion": 2
+}
+```
+
+Emits `SHIPMENT_SCHEDULE_EXTENDED`. The stage moves by `extensionDays` and every
+later *unconfirmed* stage shifts with it; confirmed stages never move. The
+estimated duration grows so the plan still fits its window, and never shrinks.
+
+`extensionDays` must be a positive whole number — zero, negatives, decimals and
+text are all rejected with 400.
+
+---
+
 ### `POST /api/shipment/archive`
 
 The closest thing this API has to "delete", and deliberately not close. Emits
@@ -221,6 +284,48 @@ carries the `eventId` and `version` it came from.
 Pass `at` to truncate the series to the same instant as a reconstructed state, so
 a live temperature can never appear beside a historical state.
 
+### `GET /api/shipment/:id/schedule`
+
+The planner's read endpoint: the plan, each stage's status derived against the
+current instant, and the per-stage `bounds` the calendar must respect.
+
+```json
+{
+  "planned": true,
+  "window": { "earliest": "2026-03-01", "latest": "2026-03-21" },
+  "plan": { "LOAD_ON_SHIP": { "plannedDate": "2026-03-03", "originalPlannedDate": "2026-03-03" } },
+  "stages": [
+    { "stage": "LOAD_ON_SHIP", "status": "OVERDUE", "overdueByDays": 5, "isBlocked": false }
+  ],
+  "bounds": { "ARRIVE_AT_PORT": { "selectable": true, "min": "2026-03-03", "max": "2026-03-21" } },
+  "isOverdue": true
+}
+```
+
+`bounds` are computed from the same policy that validates the command, so the
+browser's date pickers cannot offer a date the server would refuse.
+
+Stage statuses: `CONFIRMED`, `IN_PROGRESS`, `PLANNED`, `OVERDUE`, `UNPLANNED`.
+**None of them is stored** — see `docs/architecture/SCHEDULING_AND_MONITORING.md`.
+
+---
+
+### `GET /api/stream/shipments[?shipmentId=SHP-1]`
+
+Server-sent events. Carries *notifications*, not data:
+
+```
+event: shipment
+data: {"aggregateId":"SHP-1","eventType":"LOADED_ON_SHIP","version":5}
+```
+
+The client re-runs its ordinary queries in response. Published by the projection
+worker **after** it commits, so a refetch triggered by a notification finds the
+read model already able to serve it. Disable with `REALTIME_ENABLED=false`; the
+dashboard falls back to polling.
+
+---
+
 ### `GET /api/shipment/:id/integrity`
 
 Hash-chain verification. `intact: true/false` plus any `issues`
@@ -253,6 +358,24 @@ An unrecognised value falls back to `active` rather than erroring: silently
 listing archived shipments would be the more surprising outcome.
 
 ## Meta and operations
+
+### `GET /api/meta/locations`
+
+The country/subdivision/city catalogue the address dropdowns are built from,
+served from the same module the create validator checks against. Cached for a
+day (~32 KB).
+
+Each subdivision carries a `cities` array; countries without subdivisions carry
+theirs at the country level. City lists are **curated suggestions, not a closed
+set** — the backend accepts a city that is absent from them, and the resolved
+location records `cityFromCatalogue` so a report can say how the value was
+entered.
+
+### `GET /api/meta/sensors`
+
+What the temperature monitor is doing, and — stated plainly, because it changes
+how the numbers should be read — whether its data is simulated.
+
 
 | Endpoint | Purpose |
 | --- | --- |

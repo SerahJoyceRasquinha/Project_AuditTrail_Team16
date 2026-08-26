@@ -29,7 +29,7 @@ test('CSV export returns correct rows, order, escaping, and integrity statement'
     const response = await http.get('/api/shipment/SHP-EXP-1/export?format=csv');
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-type'), 'text/csv');
-    assert.ok(response.headers.get('content-disposition').includes('filename="SHP-EXP-1-history.csv"'));
+    assert.ok(response.headers.get('content-disposition').includes('filename="SHP-EXP-1-audit-report.csv"'));
 
     const textTitle = response.raw;
     assert.ok(textTitle.includes('Version'));
@@ -60,7 +60,11 @@ test('Tampered shipment returns compromised integrity message in export', async 
 
     // Seed a shipment, then tamper the DB
     const seeded = await seedCanonicalShipment(system.container, 'SHP-EXP-3');
-    await system.db.collection('events').updateOne(
+    // The events collection is `shipment_events` (see COLLECTIONS in config/env.js).
+    // This previously tampered with a collection called `events`, which does not
+    // exist - so nothing was modified, the chain verified intact, and the
+    // assertion below failed. The test was wrong, not the integrity check.
+    await system.db.collection('shipment_events').updateOne(
         { aggregateId: 'SHP-EXP-3', version: 2 },
         { $set: { 'payload.movementType': 'TAMPERED' } }
     );

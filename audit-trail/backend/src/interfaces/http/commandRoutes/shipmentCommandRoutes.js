@@ -54,5 +54,26 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
   /** POST /api/shipment/restore -> SHIPMENT_RESTORED */
   router.post('/shipment/restore', asyncHandler(controller.restore));
 
+  /**
+   * Scheduling.
+   *
+   * These are the endpoints the lifecycle planner talks to, and they are worth
+   * looking at for what they do *not* offer: there is no way to submit an event
+   * type and a payload. A client can ask to plan, revise or extend a schedule -
+   * business intentions - and the backend decides which event, if any, that
+   * legitimately produces. "Append an arbitrary event" is not in the API
+   * surface, which is what stops the richer UI from becoming a thin wrapper
+   * over the Event Store.
+   */
+
+  /** POST /api/shipment/schedule/plan -> SHIPMENT_SCHEDULE_PLANNED */
+  router.post('/shipment/schedule/plan', asyncHandler(controller.planSchedule));
+
+  /** POST /api/shipment/schedule/revise -> SHIPMENT_SCHEDULE_REVISED */
+  router.post('/shipment/schedule/revise', asyncHandler(controller.reviseSchedule));
+
+  /** POST /api/shipment/schedule/extend -> SHIPMENT_SCHEDULE_EXTENDED */
+  router.post('/shipment/schedule/extend', asyncHandler(controller.extendSchedule));
+
   return router;
 }

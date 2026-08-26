@@ -118,6 +118,16 @@ export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal 
 
 export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });
 
+/** The country/subdivision catalogue the address dropdowns are built from. */
+export const getLocationCatalogue = (signal) => request('/api/meta/locations', { signal });
+
+/** What the temperature monitor is doing, and whether its data is simulated. */
+export const getSensorStatus = (signal) => request('/api/meta/sensors', { signal });
+
+/** Plan, derived stage statuses and the bounds the calendar must respect. */
+export const getShipmentSchedule = (shipmentId, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}/schedule`, { signal });
+
 // --- Commands (write side) --------------------------------------------------
 
 export const createShipment = (command) =>
@@ -143,6 +153,22 @@ export const archiveShipment = (command) =>
 
 export const restoreShipment = (command) =>
   request('/api/shipment/restore', { method: 'POST', body: command });
+
+/**
+ * Scheduling commands.
+ *
+ * Business intentions, not event appends. The backend decides which event - if
+ * any - each one legitimately produces, so the planner UI has no more authority
+ * over the ledger than any other client.
+ */
+export const planSchedule = (command) =>
+  request('/api/shipment/schedule/plan', { method: 'POST', body: command });
+
+export const reviseSchedule = (command) =>
+  request('/api/shipment/schedule/revise', { method: 'POST', body: command });
+
+export const extendSchedule = (command) =>
+  request('/api/shipment/schedule/extend', { method: 'POST', body: command });
 
 export const exportShipment = async (shipmentId, format, signal) => {
   const url = `${BASE_URL}/api/shipment/${encodeURIComponent(shipmentId)}/export?format=${encodeURIComponent(format)}`;
@@ -170,7 +196,7 @@ export const exportShipment = async (shipmentId, format, signal) => {
 
   // Extract filename from header if possible, else fallback
   const disposition = response.headers.get('content-disposition');
-  let filename = `${shipmentId}-history.${format}`;
+  let filename = `${shipmentId}-audit-report.${format}`;
   if (disposition && disposition.indexOf('filename=') !== -1) {
     const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
     const matches = filenameRegex.exec(disposition);

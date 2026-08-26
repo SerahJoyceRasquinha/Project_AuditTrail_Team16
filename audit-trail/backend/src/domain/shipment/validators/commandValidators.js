@@ -1,6 +1,33 @@
 import { MOVEMENT_TYPES } from '../events/eventTypes.js';
+import { resolveLocation } from '../reference/locations.js';
+import {
+  LIFECYCLE_STAGES,
+  REVISION_REASONS,
+  STAGE_LABELS,
+  isPlanDate,
+  validateWholeDays,
+} from '../schedule/schedulePolicy.js';
 import { ValidationError } from '../../../shared/errors/AppError.js';
 import { isValidIsoTimestamp } from '../../../shared/utils/index.js';
+
+/**
+ * Container-code normalisation (requirement 4).
+ *
+ * Applied on the *backend*, not only in the input field, and applied before the
+ * value ever reaches the aggregate. That ordering is what actually prevents the
+ * failure the requirement describes: if normalisation lived only in the
+ * browser, a client posting `msku7845123` directly would create a second,
+ * conflicting record for a container the ledger already knows as
+ * `MSKU7845123` - and in an append-only store, that mistake cannot be tidied up
+ * afterwards.
+ *
+ * Whitespace is stripped for the same reason casing is: the difference is
+ * invisible to a human reading a manifest and fatal to a query.
+ */
+export function normaliseContainerCode(value) {
+  if (typeof value !== 'string') return value;
+  return value.trim().replace(/\s+/g, '').toUpperCase();
+}
 
 /**
  * Structural validation of inbound commands (roadmap 16 - Input validation).
@@ -117,19 +144,61 @@ function throwIfAny(errors, message) {
   if (errors.length > 0) throw new ValidationError(message, { issues: errors });
 }
 
-/** POST /shipment/create */
+/**
+ * POST /shipment/create
+ *
+ * `shipmentId` is **optional**. Omitting it - which is what the dashboard does -
+ * asks the server to allocate the next `SHP-N` from an atomic counter. Supplying
+ * one is still permitted, because backfilling a real history and seeding a
+ * demonstration dataset both need to name their own streams, and refusing that
+ * would mean the import path could not reproduce an existing ledger.
+ *
+ * Either way the identifier is fixed at creation: it is the stream identity, it
+ * is absent from AMENDABLE_FIELDS, and no command can change it afterwards.
+ */
 export function validateCreateShipmentCommand(input) {
   const errors = [];
-  const shipmentId = input?.shipmentId;
-  try {
-    validateShipmentId(shipmentId);
-  } catch (error) {
-    errors.push({ field: 'shipmentId', message: error.message });
+  const shipmentId = input?.shipmentId ?? null;
+  if (shipmentId !== null && shipmentId !== undefined && shipmentId !== '') {
+    try {
+      validateShipmentId(shipmentId);
+    } catch (error) {
+      errors.push({ field: 'shipmentId', message: error.message });
+    }
   }
 
-  const containerCode = requireNonEmptyString(errors, input, 'containerCode', { maxLength: 32 });
-  const origin = requireNonEmptyString(errors, input, 'origin');
-  const destination = requireNonEmptyString(errors, input, 'destination');
+  const rawContainerCode = requireNonEmptyString(errors, input, 'containerCode', { maxLength: 32 });
+  const containerCode = rawContainerCode === undefined ? undefined : normaliseContainerCode(rawContainerCode);
+  if (containerCode !== undefined && containerCode === '') {
+    errors.push({ field: 'containerCode', message: "'containerCode' cannot be only whitespace." });
+  }
+
+  /**
+   * Origin and destination.
+   *
+   * Structured `{ city, countryCode, stateCode }` is the intended input and is
+   * resolved against the shared country/subdivision catalogue - the same one
+   * the dropdowns are built from, so the UI and the validator cannot disagree.
+   *
+   * A plain string is still accepted for the backfill and seed paths described
+   * above. When one is given, the free-text value is stored as-is and no
+   * normalised location object is produced; the PDF then shows the location as
+   * "as recorded" rather than implying a validated country/state pair it never
+   * had.
+   */
+  const { display: origin, location: originLocation } = resolveAddress(errors, input, 'origin');
+  const { display: destination, location: destinationLocation } = resolveAddress(
+    errors,
+    input,
+    'destination'
+  );
+
+  const durationCheck = validateWholeDays(input?.estimatedDurationDays, {
+    field: 'estimatedDurationDays',
+  });
+  if (!durationCheck.ok) errors.push(durationCheck.issue);
+  const estimatedDurationDays = durationCheck.ok ? durationCheck.value : null;
+
   const cargoDescription = optionalString(errors, input, 'cargoDescription');
   const carrier = optionalString(errors, input, 'carrier', { maxLength: 120 });
   const minTemperatureC = optionalFiniteNumber(errors, input, 'minTemperatureC');
@@ -165,12 +234,49 @@ export function validateCreateShipmentCommand(input) {
     containerCode,
     origin,
     destination,
+    originLocation,
+    destinationLocation,
+    estimatedDurationDays,
     cargoDescription,
     carrier,
     minTemperatureC,
     maxTemperatureC,
   };
 }
+
+/**
+ * Accepts either a structured location or a legacy free-text string for an
+ * address field, and reports which it got.
+ */
+function resolveAddress(errors, input, field) {
+  const structured = input?.[`${field}Location`] ?? (isPlainObject(input?.[field]) ? input[field] : null);
+
+  if (structured) {
+    const { location, issues } = resolveLocation(structured, { fieldPrefix: field });
+    if (issues.length > 0) {
+      issues.forEach((issue) => errors.push({ field: issue.field, message: issue.message, code: issue.code }));
+      return { display: undefined, location: null };
+    }
+    return { display: location.display, location };
+  }
+
+  const text = input?.[field];
+  if (typeof text !== 'string' || text.trim() === '') {
+    errors.push({
+      field: `${field}.countryCode`,
+      code: 'COUNTRY_REQUIRED',
+      message: `Select a country for the ${field}.`,
+    });
+    return { display: undefined, location: null };
+  }
+  if (text.length > 200) {
+    errors.push({ field, message: `'${field}' must be at most 200 characters.` });
+    return { display: undefined, location: null };
+  }
+  return { display: text.trim(), location: null };
+}
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** POST /shipment/move - the command named by the source document. */
 export function validateMoveShipmentCommand(input) {
@@ -247,6 +353,21 @@ export function validateRecordTemperatureCommand(input) {
 
   const sensorId = optionalString(errors, input, 'sensorId', { maxLength: 60 });
 
+  /**
+   * Provenance. Defaults to MANUAL because a reading arriving through the API
+   * without stating where it came from *is* a hand-entered one - and a reading
+   * whose origin is unknown must never be allowed to pass itself off as sensor
+   * data in the audit trail.
+   */
+  const allowedSources = ['MANUAL', 'SIMULATED', 'EXTERNAL'];
+  const rawSource = input?.source ?? 'MANUAL';
+  if (!allowedSources.includes(rawSource)) {
+    errors.push({
+      field: 'source',
+      message: `'source' must be one of: ${allowedSources.join(', ')}.`,
+    });
+  }
+
   let expectedVersion = null;
   try {
     expectedVersion = validateExpectedVersion(input?.expectedVersion, { minimum: 1 });
@@ -258,7 +379,15 @@ export function validateRecordTemperatureCommand(input) {
 
   throwIfAny(errors, 'The record-temperature command failed validation.');
 
-  return { occurredAt, shipmentId, temperatureC, recordedAt: recordedAt ?? null, sensorId, expectedVersion };
+  return {
+    occurredAt,
+    shipmentId,
+    temperatureC,
+    recordedAt: recordedAt ?? null,
+    sensorId,
+    source: rawSource,
+    expectedVersion,
+  };
 }
 
 /**
@@ -283,9 +412,17 @@ export function validateAmendShipmentCommand(input) {
     errors.push({ field: 'shipmentId', message: error.message });
   }
 
-  const containerCode = optionalString(errors, input, 'containerCode', { maxLength: 32 });
-  const origin = optionalString(errors, input, 'origin', { maxLength: 200 });
-  const destination = optionalString(errors, input, 'destination', { maxLength: 200 });
+  const rawContainerCode = optionalString(errors, input, 'containerCode', { maxLength: 32 });
+  // Normalised on amendment too - otherwise an "edit" could reintroduce exactly
+  // the casing inconsistency creation was careful to prevent.
+  const containerCode = rawContainerCode === null ? null : normaliseContainerCode(rawContainerCode);
+
+  const originAmendment = optionalAddressAmendment(errors, input, 'origin');
+  const destinationAmendment = optionalAddressAmendment(errors, input, 'destination');
+  const origin = originAmendment.display;
+  const destination = destinationAmendment.display;
+  const originLocation = originAmendment.location;
+  const destinationLocation = destinationAmendment.location;
   const cargoDescription = optionalString(errors, input, 'cargoDescription');
   const carrier = optionalString(errors, input, 'carrier', { maxLength: 120 });
   const minTemperatureC = optionalFiniteNumber(errors, input, 'minTemperatureC');
@@ -325,6 +462,8 @@ export function validateAmendShipmentCommand(input) {
     containerCode,
     origin,
     destination,
+    originLocation,
+    destinationLocation,
     cargoDescription,
     carrier,
     minTemperatureC,
@@ -332,6 +471,21 @@ export function validateAmendShipmentCommand(input) {
     reason,
     expectedVersion,
   };
+}
+
+/** An address field on an amendment: absent means "not amended", as everywhere else. */
+function optionalAddressAmendment(errors, input, field) {
+  const structured = input?.[`${field}Location`];
+  if (isPlainObject(structured)) {
+    const { location, issues } = resolveLocation(structured, { fieldPrefix: field });
+    if (issues.length > 0) {
+      issues.forEach((issue) => errors.push({ field: issue.field, message: issue.message, code: issue.code }));
+      return { display: null, location: null };
+    }
+    return { display: location.display, location };
+  }
+  const text = optionalString(errors, input, field, { maxLength: 200 });
+  return { display: text, location: null };
 }
 
 /** POST /shipment/archive and POST /shipment/restore - identical shapes. */
@@ -379,4 +533,185 @@ export function validateHistoricalStateQuery({ shipmentId, at }) {
     );
   }
   return { shipmentId, at: new Date(at).toISOString() };
+}
+
+// ---------------------------------------------------------------------------
+// Schedule commands
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared shape validation for a proposed schedule.
+ *
+ * Deliberately *structural only*, like every other validator here. Whether the
+ * dates fall inside the shipment's planning window and respect stage ordering
+ * are questions about aggregate state, so they belong to the aggregate - which
+ * answers them with `validatePlannedDates` against the real creation date and
+ * real confirmed stages. Duplicating those checks here would create two rule
+ * sets to keep in step, and the one further from the state would eventually be
+ * wrong.
+ */
+function validateScheduleShape(errors, input) {
+  const raw = input?.schedule;
+  if (raw === null || raw === undefined || typeof raw !== 'object' || Array.isArray(raw)) {
+    errors.push({
+      field: 'schedule',
+      code: 'SCHEDULE_REQUIRED',
+      message: "'schedule' must be an object keyed by lifecycle stage.",
+    });
+    return null;
+  }
+
+  const schedule = {};
+  for (const stage of LIFECYCLE_STAGES) {
+    const entry = raw[stage];
+    if (entry === undefined || entry === null) {
+      errors.push({
+        field: `schedule.${stage}`,
+        code: 'STAGE_MISSING',
+        message: `A plan for ${STAGE_LABELS[stage]} is required.`,
+      });
+      continue;
+    }
+
+    const plannedDate = typeof entry === 'string' ? entry : entry.plannedDate;
+    if (!isPlanDate(plannedDate)) {
+      errors.push({
+        field: `schedule.${stage}.plannedDate`,
+        code: 'PLANNED_DATE_INVALID',
+        message: `The tentative date for ${STAGE_LABELS[stage]} must be a calendar date (YYYY-MM-DD).`,
+      });
+      continue;
+    }
+
+    const details = typeof entry === 'object' && isPlainObject(entry.details) ? entry.details : null;
+    if (details) {
+      for (const [key, value] of Object.entries(details)) {
+        if (value === null || value === undefined || value === '') continue;
+        if (typeof value !== 'string') {
+          errors.push({
+            field: `schedule.${stage}.details.${key}`,
+            message: 'Stage details must be text.',
+          });
+        } else if (value.length > 300) {
+          errors.push({
+            field: `schedule.${stage}.details.${key}`,
+            message: 'Stage details must be at most 300 characters.',
+          });
+        }
+      }
+    }
+
+    schedule[stage] = { plannedDate, details };
+  }
+
+  return schedule;
+}
+
+/** POST /shipment/schedule/plan -> SHIPMENT_SCHEDULE_PLANNED */
+export function validatePlanScheduleCommand(input) {
+  const errors = [];
+  const shipmentId = input?.shipmentId;
+  try {
+    validateShipmentId(shipmentId);
+  } catch (error) {
+    errors.push({ field: 'shipmentId', message: error.message });
+  }
+
+  const schedule = validateScheduleShape(errors, input);
+  const note = optionalString(errors, input, 'note', { maxLength: 300 });
+
+  let expectedVersion = null;
+  try {
+    expectedVersion = validateExpectedVersion(input?.expectedVersion, { minimum: 1 });
+  } catch (error) {
+    errors.push({ field: 'expectedVersion', message: error.message });
+  }
+
+  const occurredAt = optionalOccurredAt(errors, input);
+  throwIfAny(errors, 'The plan-schedule command failed validation.');
+
+  return { occurredAt, shipmentId, schedule, note, expectedVersion };
+}
+
+/** POST /shipment/schedule/revise -> SHIPMENT_SCHEDULE_REVISED */
+export function validateReviseScheduleCommand(input) {
+  const errors = [];
+  const shipmentId = input?.shipmentId;
+  try {
+    validateShipmentId(shipmentId);
+  } catch (error) {
+    errors.push({ field: 'shipmentId', message: error.message });
+  }
+
+  const schedule = validateScheduleShape(errors, input);
+  const note = optionalString(errors, input, 'note', { maxLength: 300 });
+
+  const reason = input?.reason ?? REVISION_REASONS.REPLAN;
+  if (!Object.values(REVISION_REASONS).includes(reason)) {
+    errors.push({
+      field: 'reason',
+      message: `'reason' must be one of: ${Object.values(REVISION_REASONS).join(', ')}.`,
+    });
+  }
+
+  let expectedVersion = null;
+  try {
+    expectedVersion = validateExpectedVersion(input?.expectedVersion, { minimum: 1 });
+  } catch (error) {
+    errors.push({ field: 'expectedVersion', message: error.message });
+  }
+
+  const occurredAt = optionalOccurredAt(errors, input);
+  throwIfAny(errors, 'The revise-schedule command failed validation.');
+
+  return { occurredAt, shipmentId, schedule, reason, note, expectedVersion };
+}
+
+/**
+ * POST /shipment/schedule/extend -> SHIPMENT_SCHEDULE_EXTENDED
+ *
+ * `extensionDays` runs through the same whole-day validator the estimated
+ * duration uses, so zero, negatives, decimals and text are refused identically
+ * in both places. One rule, one implementation, one error message.
+ */
+export function validateExtendScheduleCommand(input) {
+  const errors = [];
+  const shipmentId = input?.shipmentId;
+  try {
+    validateShipmentId(shipmentId);
+  } catch (error) {
+    errors.push({ field: 'shipmentId', message: error.message });
+  }
+
+  const stage = input?.stage;
+  if (!LIFECYCLE_STAGES.includes(stage)) {
+    errors.push({
+      field: 'stage',
+      message: `'stage' must be one of: ${LIFECYCLE_STAGES.join(', ')}.`,
+    });
+  }
+
+  const extension = validateWholeDays(input?.extensionDays, { field: 'extensionDays', max: 365 });
+  if (!extension.ok) errors.push(extension.issue);
+
+  const reason = optionalString(errors, input, 'reason', { maxLength: 300 });
+
+  let expectedVersion = null;
+  try {
+    expectedVersion = validateExpectedVersion(input?.expectedVersion, { minimum: 1 });
+  } catch (error) {
+    errors.push({ field: 'expectedVersion', message: error.message });
+  }
+
+  const occurredAt = optionalOccurredAt(errors, input);
+  throwIfAny(errors, 'The extend-schedule command failed validation.');
+
+  return {
+    occurredAt,
+    shipmentId,
+    stage,
+    extensionDays: extension.ok ? extension.value : null,
+    reason,
+    expectedVersion,
+  };
 }

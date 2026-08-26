@@ -31,6 +31,20 @@ export async function createTestSystem(overrides = {}) {
       name: 'test-projection-worker',
     },
     limits: { maxEventsPerQuery: 5000, maxShipmentsPerPage: 100 },
+    // Automatic monitoring is off in tests: readings must be issued explicitly
+    // so assertions are about the code under test, not about whatever the
+    // sampler happened to append while the test was running.
+    sensors: {
+      enabled: false,
+      source: 'simulated',
+      feedUrl: '',
+      timeoutMs: 1000,
+      intervalMs: 3_600_000,
+      sweepIntervalMs: 60_000,
+      maxCatchUpReadings: 48,
+      excursionChance: 0.08,
+    },
+    realtime: { enabled: true, heartbeatMs: 25_000 },
     ...overrides,
   });
 
@@ -45,6 +59,7 @@ export async function createTestSystem(overrides = {}) {
     container,
     ...container,
     teardown: async () => {
+      await container.temperatureMonitor.stop().catch(() => {});
       await container.projectionWorker.stop().catch(() => {});
       await close();
     },
@@ -109,6 +124,7 @@ export async function seedCanonicalShipment(container, shipmentId = 'SHP-TEST-1'
     destination: 'Rotterdam, NL',
     minTemperatureC: 2,
     maxTemperatureC: 8,
+    estimatedDurationDays: 21,
   });
   await tick();
   const loaded = await svc.moveShipment({

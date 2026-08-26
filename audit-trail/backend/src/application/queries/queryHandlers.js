@@ -5,6 +5,67 @@ import {
 import { AggregateNotFoundError } from '../../shared/errors/AppError.js';
 import { projectState } from '../../infrastructure/projections/shipmentProjection.js';
 import { replay } from '../../domain/shipment/reducers/shipmentReducer.js';
+import {
+  LIFECYCLE_STAGES,
+  planningWindow,
+  summariseSchedule,
+} from '../../domain/shipment/schedule/schedulePolicy.js';
+
+/**
+ * Recomputes the schedule against the current instant.
+ *
+ * The projection stores a schedule snapshot taken when the worker last ran, and
+ * that snapshot is fine for sorting a list. It is *not* fine for answering "is
+ * this stage overdue?" on a detail screen: overdue-ness is a function of the
+ * clock, and a projection written yesterday would answer as though it were
+ * still yesterday.
+ *
+ * So the read model supplies the plan and the query supplies the moment. Both
+ * come from the same pure `summariseSchedule`, so the answer is consistent with
+ * the PDF and the aggregate - it is only the value of "now" that differs.
+ */
+function withLiveSchedule(shipment) {
+  if (!shipment?.schedulePlanned || !shipment?.schedule?.plan) return shipment;
+
+  const confirmedStages = {};
+  for (const entry of shipment.schedule.stages ?? []) {
+    if (entry.status === 'CONFIRMED') {
+      confirmedStages[entry.stage] = {
+        confirmedAt: entry.confirmedAt,
+        plannedDate: entry.plannedDate,
+        varianceDays: entry.varianceDays ?? null,
+      };
+    }
+  }
+
+  const summary = summariseSchedule({
+    schedule: shipment.schedule.plan,
+    originalSchedule: shipment.schedule.originalPlan,
+    confirmedStages,
+    createdAt: shipment.createdAt,
+    estimatedDurationDays: shipment.estimatedDurationDays,
+    originalEstimatedDurationDays: shipment.originalEstimatedDurationDays,
+    now: new Date(),
+  });
+
+  return {
+    ...shipment,
+    schedule: {
+      ...shipment.schedule,
+      stages: summary.stages,
+      nextStage: summary.nextStage,
+      isOverdue: summary.isOverdue,
+      overdueStages: summary.overdueStages,
+      maxOverdueDays: summary.maxOverdueDays,
+      isComplete: summary.isComplete,
+      actualCompletionAt: summary.actualCompletionAt,
+      actualDurationDays: summary.actualDurationDays,
+      plannedCompletionDate: summary.plannedCompletionDate,
+      originalPlannedCompletionDate: summary.originalPlannedCompletionDate,
+      evaluatedAt: new Date().toISOString(),
+    },
+  };
+}
 
 /**
  * Query handlers - the read half of CQRS (roadmap 9.4).
@@ -48,7 +109,7 @@ export class GetShipmentQueryHandler {
 
     if (projection && projection.currentVersion === storeVersion) {
       return {
-        shipment: projection,
+        shipment: withLiveSchedule(projection),
         consistency: {
           source: 'read-model',
           projected: true,
@@ -74,7 +135,7 @@ export class GetShipmentQueryHandler {
     });
 
     return {
-      shipment: replayed,
+      shipment: withLiveSchedule(replayed),
       consistency: {
         source: 'event-store-replay',
         projected: false,
@@ -153,7 +214,10 @@ export class ListShipmentsQueryHandler {
   }
 
   async handle(filters = {}) {
-    return this.#readModel.list(filters);
+    const result = await this.#readModel.list(filters);
+    // The list is where an operator scans for trouble, so overdue-ness has to
+    // be current here too - not as of whenever the worker last ran.
+    return { ...result, items: result.items.map(withLiveSchedule) };
   }
 }
 
@@ -185,4 +249,113 @@ export class ReconcileShipmentQueryHandler {
     validateShipmentId(shipmentId);
     return this.#reconciliationService.reconcileOne(shipmentId);
   }
+}
+
+/**
+ * GET /shipment/:id/schedule
+ *
+ * The planner's dedicated read endpoint. It answers three questions the
+ * dashboard needs together and which would otherwise be assembled by the
+ * browser from three separate calls:
+ *
+ *   - what is planned, and what was originally planned;
+ *   - what each stage's status is *right now*;
+ *   - which dates the calendar may offer for each stage.
+ *
+ * That last one matters most. The selectable range for a stage depends on the
+ * shipment's creation date, its current estimated duration and the dates chosen
+ * for the stages before it. Computing those bounds here - from the same policy
+ * the aggregate validates with - means the calendar cannot offer a date the
+ * backend would then refuse.
+ */
+export class GetShipmentScheduleQueryHandler {
+  #eventStore;
+
+  constructor({ eventStore }) {
+    this.#eventStore = eventStore;
+  }
+
+  async handle({ shipmentId }) {
+    validateShipmentId(shipmentId);
+    const events = await this.#eventStore.getEvents(shipmentId);
+    if (events.length === 0) throw new AggregateNotFoundError(shipmentId);
+
+    const state = replay(events);
+    const window = planningWindow({
+      createdAt: state.createdAt,
+      estimatedDurationDays: state.estimatedDurationDays,
+    });
+
+    const summary = state.schedulePlanned
+      ? summariseSchedule({
+          schedule: state.schedule,
+          originalSchedule: state.originalSchedule,
+          confirmedStages: state.confirmedStages ?? {},
+          createdAt: state.createdAt,
+          estimatedDurationDays: state.estimatedDurationDays,
+          originalEstimatedDurationDays: state.originalEstimatedDurationDays,
+          now: new Date(),
+        })
+      : null;
+
+    return {
+      aggregateId: shipmentId,
+      currentVersion: state.version,
+      planned: Boolean(state.schedulePlanned),
+      createdAt: state.createdAt,
+      estimatedDurationDays: state.estimatedDurationDays,
+      originalEstimatedDurationDays: state.originalEstimatedDurationDays,
+      window,
+      plan: state.schedule,
+      originalPlan: state.originalSchedule,
+      stages: summary?.stages ?? [],
+      nextStage: summary?.nextStage ?? LIFECYCLE_STAGES[0],
+      isOverdue: summary?.isOverdue ?? false,
+      overdueStages: summary?.overdueStages ?? [],
+      isComplete: summary?.isComplete ?? false,
+      plannedCompletionDate: summary?.plannedCompletionDate ?? null,
+      originalPlannedCompletionDate: summary?.originalPlannedCompletionDate ?? null,
+      /** Per-stage selectable bounds, so the calendar cannot offer an illegal date. */
+      bounds: buildStageBounds(state, window, summary),
+      scheduleRevisionCount: state.scheduleRevisionCount,
+      scheduleExtensionCount: state.scheduleExtensionCount,
+      totalExtensionDays: state.totalExtensionDays,
+      evaluatedAt: new Date().toISOString(),
+    };
+  }
+}
+
+/**
+ * The selectable date range for each stage.
+ *
+ * A stage may never be planned before the stage in front of it, nor before the
+ * shipment existed, nor beyond the current planning window. Confirmed stages
+ * get a null range: their date is a historical fact and is not selectable at
+ * all.
+ */
+function buildStageBounds(state, window, summary) {
+  if (!window) return {};
+
+  const bounds = {};
+  let floor = window.earliest;
+
+  for (const stage of LIFECYCLE_STAGES) {
+    const confirmed = state.confirmedStages?.[stage] ?? null;
+    if (confirmed) {
+      bounds[stage] = {
+        selectable: false,
+        reason: 'This stage has already been confirmed, so its date is now a historical fact.',
+        min: null,
+        max: null,
+      };
+      floor = confirmed.confirmedOn ?? state.schedule?.[stage]?.plannedDate ?? floor;
+      continue;
+    }
+
+    bounds[stage] = { selectable: true, min: floor, max: window.latest, reason: null };
+    const chosen = state.schedule?.[stage]?.plannedDate;
+    if (chosen && chosen > floor) floor = chosen;
+  }
+
+  return bounds;
 }

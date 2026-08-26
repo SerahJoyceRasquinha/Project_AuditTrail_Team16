@@ -34,6 +34,9 @@ export function createShipmentQueryRoutes({ controller }) {
   /** GET /api/shipment/:id/reconciliation - projection vs replay comparison */
   router.get('/shipment/:id/reconciliation', asyncHandler(controller.reconcile));
 
+  /** GET /api/shipment/:id/schedule - plan, derived stage statuses and calendar bounds */
+  router.get('/shipment/:id/schedule', asyncHandler(controller.getSchedule));
+
   /** GET /api/shipment/:id - current state from the read model (source endpoint) */
   router.get('/shipment/:id', asyncHandler(controller.getShipment));
 

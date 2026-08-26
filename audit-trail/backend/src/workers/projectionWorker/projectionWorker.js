@@ -34,6 +34,7 @@ export class ProjectionWorker {
   #checkpoints;
   #logger;
   #config;
+  #eventBus;
 
   #running = false;
   #stopping = false;
@@ -51,12 +52,13 @@ export class ProjectionWorker {
     lastError: null,
   };
 
-  constructor({ eventStore, readModelRepository, checkpointRepository, logger, config }) {
+  constructor({ eventStore, readModelRepository, checkpointRepository, logger, config, eventBus = null }) {
     this.#eventStore = eventStore;
     this.#readModel = readModelRepository;
     this.#checkpoints = checkpointRepository;
     this.#logger = logger.child({ component: 'projection-worker', worker: config.worker.name });
     this.#config = config;
+    this.#eventBus = eventBus;
   }
 
   get isRunning() {
@@ -135,6 +137,22 @@ export class ProjectionWorker {
       if (outcome === 'processed') {
         this.#stats.eventsProcessed += 1;
         processedCount += 1;
+        /**
+         * Announced only after the projection has been written. Telling the UI
+         * earlier would guarantee its refetch sometimes beat the read model and
+         * showed stale data - which is exactly the confusing eventual-
+         * consistency glitch this project surfaces honestly rather than hides.
+         *
+         * The notification carries no shipment data, only an identifier and a
+         * version: it is a hint to re-query, never a second read path.
+         */
+        this.#eventBus?.publish({
+          aggregateId: event.aggregateId,
+          eventType: event.eventType,
+          version: event.version,
+          sequence: event.sequence,
+          occurredAt: event.timestamp,
+        });
       } else if (outcome === 'skipped') {
         this.#stats.eventsSkipped += 1;
       }
