@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { eventLabel, eventTone, formatTimestamp, payloadEntries, truncateHash } from '../utils/format.js';
 import { EmptyBlock } from './StatusBlocks.jsx';
 
@@ -10,19 +10,8 @@ import { EmptyBlock } from './StatusBlocks.jsx';
  * are immediately obvious.
  */
 export const EventCard = memo(function EventCard({ event, selected, onSelect, dimmed }) {
-  const [copied, setCopied] = useState(false);
   const tone = eventTone(event.eventType);
-
-  const copyEventId = async (e) => {
-    e.stopPropagation();
-
-    await navigator.clipboard.writeText(event.eventId);
-    setCopied(true);
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 1500);
-  };
+  const entries = payloadEntries(event.payload);
 
   return (
     <li className="event" style={dimmed ? { opacity: 0.38 } : undefined}>
@@ -76,15 +65,6 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
             <span>{truncateHash(event.hash)}</span>
           </div>
         ) : null}
-            </button>
-
-      <button
-        type="button"
-        className="event__copy"
-        onClick={copyEventId}
-        aria-label="Copy event ID"
-      >
-        {copied ? 'Copied ✓' : 'Copy ID'}
       </button>
     </li>
   );
