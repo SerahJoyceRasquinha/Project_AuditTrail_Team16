@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { readToken } from '../services/apiClient.js';
 
 /**
  * Near-real-time updates over server-sent events.
@@ -39,7 +40,25 @@ export function useShipmentStream({ shipmentId = null, onNotification, enabled =
     let closed = false;
 
     const base = import.meta.env?.VITE_API_BASE_URL ?? '';
-    const query = shipmentId ? `?shipmentId=${encodeURIComponent(shipmentId)}` : '';
+
+    /**
+     * The stream endpoint requires a session like every other protected route,
+     * but EventSource cannot set an Authorization header - so the token rides
+     * in the query string instead. The backend accepts it there only as a
+     * fallback and verifies it with exactly the same code as a header token.
+     *
+     * With no token there is nothing to connect with, so the caller falls back
+     * to polling rather than opening a socket that would only be refused.
+     */
+    const token = readToken();
+    if (!token) {
+      setConnected(false);
+      return undefined;
+    }
+
+    const params = new URLSearchParams({ token });
+    if (shipmentId) params.set('shipmentId', shipmentId);
+    const query = `?${params.toString()}`;
 
     const connect = () => {
       if (closed) return;

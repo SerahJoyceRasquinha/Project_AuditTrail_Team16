@@ -118,6 +118,25 @@ export class ShipmentCommandService {
   }
 
   async createShipment(command, { correlationId, actor } = {}) {
+    let shipmentId = command.shipmentId;
+
+    if (!shipmentId) {
+      if (!this.#idAllocator) {
+        throw new ValidationError(
+          "'shipmentId' is required because no identifier allocator is configured.",
+          { field: 'shipmentId' }
+        );
+      }
+      const allocated = await this.#idAllocator.allocate();
+      shipmentId = allocated.shipmentId;
+      this.#logger.info('Allocated a shipment identifier.', {
+        shipmentId,
+        sequence: allocated.sequence,
+      });
+    }
+
+    const resolved = { ...command, shipmentId };
+
     return this.#execute({
       shipmentId,
       // Creation asserts version 0: "I believe this stream does not exist yet."
@@ -126,8 +145,8 @@ export class ShipmentCommandService {
       commandName: 'CreateShipment',
       correlationId,
       actor,
-      command,
-      decide: (aggregate, context) => aggregate.create(command, context),
+      command: resolved,
+      decide: (aggregate, context) => aggregate.create(resolved, context),
     });
   }
 
@@ -164,37 +183,40 @@ export class ShipmentCommandService {
    * history, fold it, honour the same OCC check, let the aggregate decide, and
    * append one event.
    */
-  async amendShipmentDetails(command, { correlationId } = {}) {
+  async amendShipmentDetails(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'AmendShipmentDetails',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.amendDetails(command, context),
     });
   }
 
-  async archiveShipment(command, { correlationId } = {}) {
+  async archiveShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'ArchiveShipment',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.archive(command, context),
     });
   }
 
-  async restoreShipment(command, { correlationId } = {}) {
+  async restoreShipment(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'RestoreShipment',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.restore(command, context),
     });
@@ -208,37 +230,40 @@ export class ShipmentCommandService {
    * Planning gets no shortcut into the store, which is the whole reason the
    * scheduling feature does not quietly reintroduce mutable state.
    */
-  async planSchedule(command, { correlationId } = {}) {
+  async planSchedule(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'PlanShipmentSchedule',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.planSchedule(command, context),
     });
   }
 
-  async reviseSchedule(command, { correlationId } = {}) {
+  async reviseSchedule(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'ReviseShipmentSchedule',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.reviseSchedule(command, context),
     });
   }
 
-  async extendSchedule(command, { correlationId } = {}) {
+  async extendSchedule(command, { correlationId, actor } = {}) {
     return this.#execute({
       shipmentId: command.shipmentId,
       expectedVersion: command.expectedVersion,
       requireExisting: true,
       commandName: 'ExtendShipmentSchedule',
       correlationId,
+      actor,
       command,
       decide: (aggregate, context) => aggregate.extendSchedule(command, context),
     });

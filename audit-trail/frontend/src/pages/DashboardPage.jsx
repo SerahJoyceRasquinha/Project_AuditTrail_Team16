@@ -11,6 +11,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/StatusBlocks
 import { ShipmentFormDialog } from '../components/ShipmentFormDialog.jsx';
 import { ConfirmDialog, ConflictDialog } from '../components/ShipmentPanels.jsx';
 import { formatRelative, formatTemperature, stateLabel } from '../utils/format.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 /**
  * The dashboard (roadmap 9.7, Week 1).
@@ -43,6 +44,12 @@ const VIEWS = [
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  /**
+   * Presentation only. Every control gated on this is also refused by the
+   * backend, so the gate here is about giving a read-only account a coherent
+   * screen rather than about stopping anything.
+   */
+  const { isOperator } = useAuth();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [view, setView] = useState('active');
@@ -150,9 +157,11 @@ export function DashboardPage() {
         <button type="button" className="btn" onClick={refetch}>
           Refresh
         </button>
-        <button type="button" className="btn btn--primary" onClick={() => setDialog({ kind: 'create' })}>
-          New shipment
-        </button>
+        {isOperator ? (
+          <button type="button" className="btn btn--primary" onClick={() => setDialog({ kind: 'create' })}>
+            New shipment
+          </button>
+        ) : null}
       </div>
 
       <div className="ledger-toolbar">
@@ -284,10 +293,12 @@ export function DashboardPage() {
                 ? 'Adjust the search or filters, or clear them to see more of the ledger.'
                 : view === 'archived'
                   ? 'Archived shipments stay here with their full history intact. Nothing has been withdrawn from the active fleet yet.'
-                  : 'Create the first shipment to append its CONTAINER_CREATED event and open its audit trail.'
+                  : isOperator
+                    ? 'Create the first shipment to append its CONTAINER_CREATED event and open its audit trail.'
+                    : 'No shipments have been created yet. An Operator account can add the first one.'
             }
             action={
-              !debouncedSearch && !hasFilters && view !== 'archived' ? (
+              isOperator && !debouncedSearch && !hasFilters && view !== 'archived' ? (
                 <button type="button" className="btn btn--primary" onClick={() => setDialog({ kind: 'create' })}>
                   Create a shipment
                 </button>
@@ -347,7 +358,7 @@ export function DashboardPage() {
                   >
                     View details
                   </Link>
-                  {shipment.archived ? (
+                  {!isOperator ? null : shipment.archived ? (
                     <button
                       type="button"
                       className="btn btn--sm btn--ghost"
@@ -410,7 +421,7 @@ export function DashboardPage() {
         </>
       ) : null}
 
-      {dialog?.kind === 'create' ? (
+      {isOperator && dialog?.kind === 'create' ? (
         <ShipmentFormDialog
           mode="create"
           onClose={() => setDialog(null)}
@@ -419,7 +430,7 @@ export function DashboardPage() {
         />
       ) : null}
 
-      {dialog?.kind === 'amend' ? (
+      {isOperator && dialog?.kind === 'amend' ? (
         <ShipmentFormDialog
           mode="amend"
           shipment={dialog.shipment}
@@ -430,7 +441,7 @@ export function DashboardPage() {
       ) : null}
 
       <ConfirmDialog
-        open={dialog?.kind === 'archive' || dialog?.kind === 'restore'}
+        open={isOperator && (dialog?.kind === 'archive' || dialog?.kind === 'restore')}
         title={
           dialog?.kind === 'archive'
             ? `Archive ${dialog?.shipment?.aggregateId}?`

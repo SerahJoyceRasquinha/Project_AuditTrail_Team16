@@ -36,7 +36,7 @@ export class ApiError extends Error {
 async function request(path, { method = 'GET', body, signal } = {}) {
   let response;
   try {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const token = readToken();
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers: {
@@ -119,12 +119,64 @@ export const getIntegrity = (shipmentId, signal) =>
 export const getReconciliation = (shipmentId, signal) =>
   request(`/api/shipment/${encodeURIComponent(shipmentId)}/reconciliation`, { signal });
 
+export const getShipmentSchedule = (shipmentId, signal) =>
+  request(`/api/shipment/${encodeURIComponent(shipmentId)}/schedule`, { signal });
+
 export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal });
 
 export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });
 
-export const login = (credentials) => request('/api/auth/login', { method: 'POST', body: credentials });
+/**
+ * The country/subdivision catalogue backing the create form's dropdowns.
+ *
+ * Served by the same domain module the command validator checks against, so a
+ * pair the UI offers is by construction a pair the backend accepts.
+ */
+export const getLocationCatalogue = (signal) => request('/api/meta/locations', { signal });
+
+// --- Authentication ---------------------------------------------------------
+
+/**
+ * The token is the *only* thing the browser is trusted to keep.
+ *
+ * Identity and role are never read from local storage - they come from
+ * `/api/auth/me`, which derives them from the stored account on the server. So
+ * editing anything in devtools changes nothing that the backend will honour,
+ * and nothing the frontend will believe for longer than one page load.
+ */
 export const authTokenKey = AUTH_TOKEN_KEY;
+
+export const readToken = () => {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const storeToken = (token) => {
+  try {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch {
+    // A browser with storage disabled still works for the current page; the
+    // session simply will not survive a reload.
+  }
+};
+
+export const clearToken = () => {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    // Nothing to do - the in-memory session is cleared by the caller either way.
+  }
+};
+
+export const login = (credentials) => request('/api/auth/login', { method: 'POST', body: credentials });
+
+export const register = (details) => request('/api/auth/register', { method: 'POST', body: details });
+
+/** Re-derives the signed-in identity and role from the token, server-side. */
+export const getCurrentUser = (signal) => request('/api/auth/me', { signal });
 
 // --- Commands (write side) --------------------------------------------------
 
@@ -170,7 +222,17 @@ export const extendSchedule = (command) =>
 
 export const exportShipment = async (shipmentId, format, signal) => {
   const url = `${BASE_URL}/api/shipment/${encodeURIComponent(shipmentId)}/export?format=${encodeURIComponent(format)}`;
-  const response = await fetch(url, { signal });
+  /**
+   * This call builds its own fetch rather than going through `request`,
+   * because it needs the raw blob rather than parsed JSON. That means the
+   * Authorization header has to be attached explicitly - forgetting it is why
+   * exports started failing the moment the query side required a session.
+   */
+  const token = readToken();
+  const response = await fetch(url, {
+    signal,
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
   if (!response.ok) {
     let envelope = {};
     try {

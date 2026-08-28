@@ -1,6 +1,8 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useWorkerStatus } from '../hooks/useShipmentData.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+
+const ROLE_LABELS = { operator: 'Operator', user: 'User' };
 
 /**
  * The application shell.
@@ -10,12 +12,30 @@ import { useAuth } from '../auth/AuthContext.jsx';
  * about it" is a real, observable property, and showing it turns eventual
  * consistency from a source of confusion into something the operator can see
  * resolve.
+ *
+ * It also carries the signed-in identity and role. Showing the role is not
+ * decoration either - a read-only account sees a deliberately reduced set of
+ * controls, and naming the reason is kinder than leaving someone to wonder
+ * where the buttons went.
  */
 export function AppLayout() {
   const location = useLocation();
-  const worker = useWorkerStatus({ intervalMs: 4000, active: location.pathname !== '/' });
+  const navigate = useNavigate();
+  const { user, isAuthenticated, isPending, logout } = useAuth();
+
+  // The worker poll is itself an authenticated request, so it stays off until
+  // there is a session - otherwise a signed-out landing page quietly generates
+  // a 401 every four seconds.
+  const worker = useWorkerStatus({
+    intervalMs: 4000,
+    active: location.pathname !== '/' && isAuthenticated,
+  });
   const behind = worker?.lag?.behindBy ?? 0;
-  const { user, logout } = useAuth();
+
+  const signOut = () => {
+    logout();
+    navigate('/', { replace: true });
+  };
 
   return (
     <div className="app">
@@ -34,16 +54,44 @@ export function AppLayout() {
           </span>
         ) : null}
 
-        <nav>
-          {user ? <span className="eyebrow">{user.displayName} · {user.role}</span> : null}
-          {user ? <button type="button" className="btn btn--sm btn--ghost" onClick={logout}>Log out</button> : null}
-          <Link
-            to="/shipments"
-            className="btn btn--sm btn--ghost"
-            aria-current={location.pathname === '/shipments' ? 'page' : undefined}
-          >
-            Open ledger
-          </Link>
+        <nav className="app__nav">
+          {isAuthenticated ? (
+            <>
+              <span className="identity">
+                <span className="identity__name">{user.displayName}</span>
+                <span
+                  className={`pill ${user.role === 'operator' ? 'pill--teal' : 'pill--violet'}`}
+                  title={
+                    user.role === 'operator'
+                      ? 'This account can issue shipment commands.'
+                      : 'This account has read-only access to the ledger.'
+                  }
+                >
+                  <span className="pill__dot" />
+                  {ROLE_LABELS[user.role] ?? user.role}
+                </span>
+              </span>
+              <Link
+                to="/shipments"
+                className="btn btn--sm btn--ghost"
+                aria-current={location.pathname === '/shipments' ? 'page' : undefined}
+              >
+                Open ledger
+              </Link>
+              <button type="button" className="btn btn--sm btn--ghost" onClick={signOut}>
+                Log out
+              </button>
+            </>
+          ) : isPending ? null : (
+            <>
+              <Link to="/login" className="btn btn--sm btn--ghost">
+                Sign in
+              </Link>
+              <Link to="/register" className="btn btn--sm btn--primary">
+                Create account
+              </Link>
+            </>
+          )}
         </nav>
       </header>
 

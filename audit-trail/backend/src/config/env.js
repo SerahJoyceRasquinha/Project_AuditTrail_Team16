@@ -54,6 +54,14 @@ export function loadConfig(overrides = {}) {
     corsOrigin: readString('CORS_ORIGIN', 'http://localhost:5173'),
     auth: {
       enabled: readBool('AUTH_ENABLED', true),
+      /**
+       * Signs session tokens. Leave unset in development and a random secret
+       * is generated per boot (sessions then end at restart); set it in any
+       * deployment where sessions must survive one.
+       */
+      tokenSecret: readString('AUTH_TOKEN_SECRET', ''),
+      /** Session lifetime. 12 hours by default - about one working shift. */
+      tokenTtlMs: readInt('AUTH_TOKEN_TTL_MS', 43_200_000),
     },
 
     /** Worker (roadmap 12.3). Polling + checkpoint, per roadmap 26. */
@@ -135,5 +143,7 @@ export const COLLECTIONS = Object.freeze({
   readModel: 'shipment_read_model',
   checkpoints: 'projection_checkpoints',
   counters: 'counters',
+  /** Account records. Deliberately a separate collection from the Event Store. */
+  users: 'users',
   deadLetters: 'projection_dead_letters',
 });

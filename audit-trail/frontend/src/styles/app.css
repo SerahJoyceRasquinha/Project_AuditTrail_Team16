@@ -1450,3 +1450,158 @@ button {
 .location-fields__custom-city {
   margin-top: 8px;
 }
+
+/* ------------------------------------------------- authentication pages -- */
+
+/*
+ * The auth screens deliberately reuse the existing panel, field, input, btn and
+ * pill vocabulary rather than introducing a second visual language. What is
+ * added here is layout - centring a narrow card in the viewport - and the role
+ * chooser, which has no existing equivalent.
+ */
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+}
+
+.auth-panel {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-panel--wide {
+  max-width: 560px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-form__submit {
+  margin-top: 4px;
+  justify-content: center;
+  padding: 11px 16px;
+}
+
+.auth-form__alt {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+
+.auth-form__alt a {
+  color: var(--signal-teal);
+}
+
+.field__optional {
+  margin-left: 6px;
+  color: var(--paper-mute);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ------------------------------------------------------- role selection -- */
+
+.role-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.role-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.role-option:hover {
+  border-color: var(--signal-teal);
+}
+
+.role-option--selected {
+  border-color: var(--signal-teal);
+  background: rgba(78, 205, 196, 0.07);
+}
+
+.role-option input {
+  margin-top: 3px;
+  flex: none;
+  accent-color: #34c3b0;
+}
+
+.role-option__body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.role-option__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.role-option__detail {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+/* ------------------------------------------------ signed-in identity -- */
+
+.app__nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 2px;
+}
+
+.identity__name {
+  font-size: 13px;
+  color: var(--paper-dim);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lifecycle__readonly {
+  margin: 0 0 4px;
+  color: var(--signal-violet);
+}
+
+.landing__actions--centred {
+  justify-content: center;
+}
+
+@media (max-width: 620px) {
+  .identity__name {
+    display: none;
+  }
+
+  .app__nav {
+    gap: 7px;
+  }
+}

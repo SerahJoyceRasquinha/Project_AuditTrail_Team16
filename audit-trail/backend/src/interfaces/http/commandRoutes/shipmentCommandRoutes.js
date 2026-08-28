@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler, rateLimiter, tagCqrsSide } from '../middleware/index.js';
 import { requireRole } from '../middleware/auth.js';
+import { COMMAND_ROLES } from '../../../domain/auth/roles.js';
 
 /**
  * The **Command** router (roadmap 9.4, Week 1).
@@ -18,7 +19,25 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
   const router = Router();
 
   router.use(tagCqrsSide('command'));
-  router.use(requireRole('operator', 'admin'));
+  /**
+   * Authorization.
+   *
+   * `operatorOnly` is attached to each command route individually rather than
+   * with `router.use`, and the distinction is not cosmetic. Both routers are
+   * mounted on the same `/api` path, so *every* request - including every
+   * query - passes through this router first and only falls through to the
+   * query router when no path here matches. A router-level guard would
+   * therefore reject a read-only account's perfectly legitimate GET before it
+   * ever reached the query side.
+   *
+   * Attached per route, the guard still runs before the controller, the
+   * handler, the aggregate and the Event Store, so a caller without the
+   * Operator role is refused before anything can append an event - which is
+   * the property that actually matters. A read-only account posting directly
+   * to any of these endpoints with curl or Postman is stopped here; hiding the
+   * button in React is a courtesy to the user, not the control.
+   */
+  const operatorOnly = requireRole(...COMMAND_ROLES);
   router.use(
     rateLimiter({
       enabled: config.rateLimit.enabled,
@@ -29,13 +48,13 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
   );
 
   /** POST /api/shipment/create -> CONTAINER_CREATED */
-  router.post('/shipment/create', asyncHandler(controller.create));
+  router.post('/shipment/create', operatorOnly, asyncHandler(controller.create));
 
   /** POST /api/shipment/move -> LOADED_ON_SHIP | ARRIVED_AT_PORT | UNLOADED_FROM_SHIP */
-  router.post('/shipment/move', asyncHandler(controller.move));
+  router.post('/shipment/move', operatorOnly, asyncHandler(controller.move));
 
   /** POST /api/shipment/temperature -> TEMPERATURE_RECORDED | TEMPERATURE_SPIKE */
-  router.post('/shipment/temperature', asyncHandler(controller.recordTemperature));
+  router.post('/shipment/temperature', operatorOnly, asyncHandler(controller.recordTemperature));
 
   /**
    * Lifecycle management, added so the dashboard can own the whole shipment
@@ -48,13 +67,13 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
    */
 
   /** POST /api/shipment/amend -> SHIPMENT_DETAILS_AMENDED */
-  router.post('/shipment/amend', asyncHandler(controller.amend));
+  router.post('/shipment/amend', operatorOnly, asyncHandler(controller.amend));
 
   /** POST /api/shipment/archive -> SHIPMENT_ARCHIVED */
-  router.post('/shipment/archive', asyncHandler(controller.archive));
+  router.post('/shipment/archive', operatorOnly, asyncHandler(controller.archive));
 
   /** POST /api/shipment/restore -> SHIPMENT_RESTORED */
-  router.post('/shipment/restore', asyncHandler(controller.restore));
+  router.post('/shipment/restore', operatorOnly, asyncHandler(controller.restore));
 
   /**
    * Scheduling.
@@ -69,13 +88,13 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
    */
 
   /** POST /api/shipment/schedule/plan -> SHIPMENT_SCHEDULE_PLANNED */
-  router.post('/shipment/schedule/plan', asyncHandler(controller.planSchedule));
+  router.post('/shipment/schedule/plan', operatorOnly, asyncHandler(controller.planSchedule));
 
   /** POST /api/shipment/schedule/revise -> SHIPMENT_SCHEDULE_REVISED */
-  router.post('/shipment/schedule/revise', asyncHandler(controller.reviseSchedule));
+  router.post('/shipment/schedule/revise', operatorOnly, asyncHandler(controller.reviseSchedule));
 
   /** POST /api/shipment/schedule/extend -> SHIPMENT_SCHEDULE_EXTENDED */
-  router.post('/shipment/schedule/extend', asyncHandler(controller.extendSchedule));
+  router.post('/shipment/schedule/extend', operatorOnly, asyncHandler(controller.extendSchedule));
 
   return router;
 }

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 const capabilities = [
   {
@@ -22,6 +23,8 @@ const capabilities = [
 ];
 
 export function LandingPage() {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="landing">
       <section className="landing__hero" aria-labelledby="landing-title">
@@ -31,8 +34,20 @@ export function LandingPage() {
           <p className="landing__lede">
             Audit Trail turns every container movement and sensor signal into a traceable record you can verify, replay, and understand.
           </p>
+          {/*
+            Signed out, the two things a visitor can actually do are create an
+            account and sign in - so those are the two things offered, rather
+            than a ledger link that would only redirect them to the login page.
+          */}
           <div className="landing__actions">
-            <Link to="/shipments" className="btn btn--primary landing__primary">Open shipment ledger <span aria-hidden="true">↗</span></Link>
+            {isAuthenticated ? (
+              <Link to="/shipments" className="btn btn--primary landing__primary">Open shipment ledger <span aria-hidden="true">↗</span></Link>
+            ) : (
+              <>
+                <Link to="/register" className="btn btn--primary landing__primary">Create account <span aria-hidden="true">↗</span></Link>
+                <Link to="/login" className="btn btn--ghost landing__primary">Sign in</Link>
+              </>
+            )}
             <a href="#how-it-works" className="btn btn--ghost">See how it works <span aria-hidden="true">↓</span></a>
           </div>
           <div className="landing__proof mono">
@@ -71,7 +86,14 @@ export function LandingPage() {
       <section className="landing__cta">
         <p className="eyebrow">The ledger is ready</p>
         <h2>Start with a shipment.<br /><span>Follow the evidence.</span></h2>
-        <Link to="/shipments" className="btn btn--primary">Browse live records <span aria-hidden="true">↗</span></Link>
+        {isAuthenticated ? (
+          <Link to="/shipments" className="btn btn--primary">Browse live records <span aria-hidden="true">↗</span></Link>
+        ) : (
+          <div className="landing__actions landing__actions--centred">
+            <Link to="/register" className="btn btn--primary">Create account <span aria-hidden="true">↗</span></Link>
+            <Link to="/login" className="btn btn--ghost">Sign in</Link>
+          </div>
+        )}
       </section>
     </div>
   );

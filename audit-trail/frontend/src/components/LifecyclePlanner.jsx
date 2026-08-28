@@ -92,7 +92,16 @@ function boundsFor(stage, draft, serverBounds) {
   return { ...base, min, max: base.max };
 }
 
-export function LifecyclePlanner({ shipmentId, schedule, disabled, disabledReason, onChanged, onConflict }) {
+/**
+ * `readOnly` is distinct from `disabled`. `disabled` means "not right now" -
+ * you are looking at a historical view, or the shipment is archived - and the
+ * controls stay visible because the situation is temporary and reversible.
+ * `readOnly` means "not with this account", which is permanent, so the editing
+ * affordances are removed altogether and the schedule is presented purely as
+ * information. Both still leave the plan fully readable, which is the point:
+ * the forensic view is for everybody.
+ */
+export function LifecyclePlanner({ shipmentId, schedule, disabled, disabledReason, readOnly = false, onChanged, onConflict }) {
   const [draft, setDraft] = useState({});
   const [extendingStage, setExtendingStage] = useState(null);
   const [extensionDays, setExtensionDays] = useState('1');
@@ -253,8 +262,10 @@ export function LifecyclePlanner({ shipmentId, schedule, disabled, disabledReaso
     <div className="panel__body lifecycle">
       {disabled ? <p className="banner banner--historical">{disabledReason}</p> : null}
 
+      {readOnly ? <p className="eyebrow lifecycle__readonly">Read-only view · schedule shown in full</p> : null}
+
       {/* ---------------- Planning ---------------- */}
-      <div className="lifecycle__planner">
+      <div className="lifecycle__planner" hidden={readOnly}>
         <h3 className="form-section">
           {planned ? 'Adjust the schedule' : 'Plan the shipment schedule'}
         </h3>
@@ -477,14 +488,16 @@ export function LifecyclePlanner({ shipmentId, schedule, disabled, disabledReaso
                       Overdue by {entry.overdueByDays} day{entry.overdueByDays === 1 ? '' : 's'}. Extend the
                       schedule or confirm the stage.
                     </span>
-                    <button
-                      type="button"
-                      className="btn btn--sm"
-                      onClick={() => setExtendingStage(entry.stage)}
-                      disabled={disabled || command.pending}
-                    >
-                      Extend schedule
-                    </button>
+                    {readOnly ? null : (
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => setExtendingStage(entry.stage)}
+                        disabled={disabled || command.pending}
+                      >
+                        Extend schedule
+                      </button>
+                    )}
                   </div>
                 ) : null}
 

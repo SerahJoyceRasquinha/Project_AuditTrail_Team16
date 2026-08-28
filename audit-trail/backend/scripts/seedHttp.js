@@ -22,10 +22,64 @@ const BASE = process.env.SEED_API_BASE ?? 'http://localhost:4000';
 const HOUR = 3600 * 1000;
 const hoursAgo = (hours) => new Date(Date.now() - hours * HOUR).toISOString();
 
+/**
+ * The seed's own session.
+ *
+ * Commands require an Operator account, so the seeder signs in as one rather
+ * than being given a private door into the ledger. It registers the account on
+ * first run and signs in on subsequent runs, and the events it appends are
+ * attributed to it like anyone else's - which is the point: the demonstration
+ * dataset is built the same way a user would build it, authorisation included.
+ *
+ * Override the credentials with SEED_USERNAME / SEED_PASSWORD.
+ */
+const SEED_USERNAME = process.env.SEED_USERNAME ?? 'seed.operator';
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'SeedOperator123';
+
+let authToken = null;
+
+async function signIn() {
+  const credentials = { username: SEED_USERNAME, password: SEED_PASSWORD, role: 'operator' };
+
+  // Try to register; a 409 just means a previous run already did.
+  const registered = await fetch(`${BASE}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+
+  if (registered.ok) {
+    const payload = await registered.json();
+    authToken = payload.token;
+    process.stdout.write(`Created the seed operator account '${SEED_USERNAME}'.\n`);
+    return;
+  }
+
+  const login = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: SEED_USERNAME, password: SEED_PASSWORD }),
+  });
+
+  if (!login.ok) {
+    const payload = await login.json().catch(() => null);
+    throw new Error(
+      `Could not sign in as '${SEED_USERNAME}': ${payload?.error?.message ?? `HTTP ${login.status}`}. ` +
+        'If this account exists with a different password, set SEED_USERNAME/SEED_PASSWORD.'
+    );
+  }
+
+  authToken = (await login.json()).token;
+  process.stdout.write(`Signed in as '${SEED_USERNAME}'.\n`);
+}
+
 async function send(path, body) {
   const response = await fetch(`${BASE}/api/${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
+    },
     body: JSON.stringify(body),
   });
 
@@ -112,11 +166,19 @@ const SHIPMENTS = [
 async function main() {
   try {
     const health = await fetch(`${BASE}/health`).then((response) => response.json());
-    process.stdout.write(`Seeding ${BASE} (persistence: ${health.persistence})\n\n`);
+    process.stdout.write(`Seeding ${BASE} (persistence: ${health.persistence})\n`);
   } catch {
     process.stderr.write(
       `Could not reach the API at ${BASE}.\nStart the backend first (npm run dev), then run this again.\n`
     );
+    process.exit(1);
+  }
+
+  try {
+    await signIn();
+    process.stdout.write('\n');
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
     process.exit(1);
   }
 

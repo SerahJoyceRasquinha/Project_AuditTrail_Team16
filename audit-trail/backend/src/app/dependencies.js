@@ -11,6 +11,7 @@ import { ReplayService } from '../application/services/replayService.js';
 import { SensorService } from '../application/services/sensorService.js';
 import { ReconciliationService } from '../application/services/reconciliationService.js';
 import { AuthService } from '../application/services/authService.js';
+import { UserRepository } from '../infrastructure/users/userRepository.js';
 
 import {
   AmendShipmentCommandHandler,
@@ -79,7 +80,14 @@ export function buildContainer({ db, config, logger }) {
     logger,
     config,
   });
-  const authService = new AuthService(config.auth);
+  /**
+   * Accounts are stored in their own collection, wired here alongside every
+   * other repository. The auth service receives that repository and nothing
+   * else from the persistence layer - it has no handle on the Event Store, so
+   * no account operation can reach the shipment log.
+   */
+  const userRepository = new UserRepository({ db });
+  const authService = new AuthService(config.auth, { userRepository, logger });
 
   /**
    * The temperature monitor is given the *command service*, not the event
@@ -178,6 +186,7 @@ export function buildContainer({ db, config, logger }) {
     replayService,
     sensorService,
     reconciliationService,
+    userRepository,
     authService,
     commandHandlers: {
       createShipmentCommandHandler,

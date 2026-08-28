@@ -103,6 +103,17 @@ export async function ensureIndexes({ db, logger }) {
   const checkpoints = db.collection(COLLECTIONS.checkpoints);
   await checkpoints.createIndex({ workerName: 1 }, { unique: true, name: 'uniq_worker' });
 
+  /**
+   * Accounts.
+   *
+   * The unique index on `username` is the real guarantee that two accounts
+   * cannot share a name - the service's duplicate check exists to produce a
+   * good error message, but only this index survives two simultaneous
+   * registrations of the same name.
+   */
+  const users = db.collection(COLLECTIONS.users);
+  await users.createIndex({ username: 1 }, { unique: true, name: 'uniq_username' });
+
   const counters = db.collection(COLLECTIONS.counters);
   await counters.createIndex({ _id: 1 }, { name: 'counter_id' });
 

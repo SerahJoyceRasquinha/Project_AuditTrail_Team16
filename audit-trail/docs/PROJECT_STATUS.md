@@ -43,3 +43,87 @@ over real HTTP.
 specifies no platform. Production readiness that *is* implemented: graceful
 shutdown, connection retry with backoff, health checks, structured logs with
 redaction, and an independently deployable worker.
+
+---
+
+## Accounts, authentication and role-based access (Aug 2026)
+
+Authentication was added as a layer *around* the existing architecture, not as a
+change to it. No command bypasses the Event Sourcing pipeline, the Event Store
+remains append-only, and CQRS separation is untouched.
+
+### Roles
+
+Two roles, fixed at registration and stored on the account:
+
+| | Queries | Shipment commands |
+|---|---|---|
+| **User** | yes | no (403) |
+| **Operator** | yes | yes |
+| *unauthenticated* | no (401) | no (401) |
+
+There is no administrator role. The requirement specifies Operator vs User, and
+adding a superuser would mean adding an escalation path nothing asked for.
+
+### Where authority comes from
+
+The browser stores **only** a signed token. Identity and role are re-derived on
+every request from the stored account record (`AuthService.verifyToken`), so:
+
+- a token cannot claim a role its account does not have;
+- editing `localStorage` cannot upgrade a session, only end one;
+- `GET /api/auth/me` restores the session after a refresh without trusting
+  anything the client kept.
+
+Authorization runs in `requireRole`, attached per command route so it executes
+before the controller, handler, aggregate and Event Store — a forbidden command
+appends nothing. It is attached per route rather than via `router.use` because
+both routers mount on `/api`, so a router-level guard would also reject queries
+falling through to the query side.
+
+### Passwords
+
+scrypt (N=16384) over a per-account random salt, compared in constant time. A
+sign-in for a non-existent account still performs a comparison, so timing does
+not reveal which usernames exist, and both failures return the same message.
+Hashes never leave the backend.
+
+### Accounts are not events
+
+Accounts live in their own `users` collection with a unique index on `username`.
+An account is mutable by nature; the shipment log is append-only by
+construction. Keeping them apart lets each be what it is, and leaves every
+existing immutability guarantee intact.
+
+### Configuration
+
+`AUTH_ENABLED` (default true; the test suite disables it), `AUTH_TOKEN_SECRET`
+(set in any real deployment so sessions survive a restart) and
+`AUTH_TOKEN_TTL_MS` (default 12h). See `.env.example`.
+
+### Seeding
+
+`npm run seed:http` registers and signs in as `seed.operator`, then issues the
+same authorised commands any client would. Override with `SEED_USERNAME` /
+`SEED_PASSWORD`.
+
+### Pre-existing defects fixed along the way
+
+These were blocking verification and are unrelated to auth:
+
+1. `createShipment` referenced an undefined `shipmentId` (a merge dropped the id
+   allocation from commit `3213da5`), throwing on **every** write and failing 222
+   of 341 backend tests.
+2. `ShipmentPage` used `useAsyncResource` and `useShipmentStream` without
+   importing them, and called a non-existent `api.getShipmentSchedule` — the
+   shipment detail page could not render.
+3. `getLocationCatalogue` was imported by `data/locations.js` but never exported.
+4. `exportShipment` never sent the bearer token, and the SSE stream could not
+   (EventSource cannot set headers; it now passes the token as a query
+   parameter, verified by the same code path).
+
+### Known issue, not introduced here
+
+The command router's rate limiter is mounted with `router.use`, so query
+requests falling through also consume the command budget. Pre-existing; left
+alone to keep this change focused.

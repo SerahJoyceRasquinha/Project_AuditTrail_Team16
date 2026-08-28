@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import * as api from '../services/apiClient.js';
 import {
+  useAsyncResource,
   useCommand,
   useHistoricalState,
   useIntegrity,
@@ -10,6 +11,8 @@ import {
   useShipment,
   useShipmentEvents,
 } from '../hooks/useShipmentData.js';
+import { useShipmentStream } from '../hooks/useShipmentStream.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { ShipmentStoreProvider, useShipmentStore } from '../store/shipmentStore.jsx';
 import { EventTimeline } from '../components/EventTimeline.jsx';
 import { StateScrubber } from '../components/StateScrubber.jsx';
@@ -49,6 +52,12 @@ export function ShipmentPage() {
  */
 function ShipmentWorkspace({ shipmentId }) {
   const store = useShipmentStore();
+  /**
+   * Role drives presentation only. Every management control below is hidden
+   * from a read-only account, and every one of them is independently refused
+   * by the backend if it is somehow invoked anyway.
+   */
+  const { isOperator } = useAuth();
   const refreshToken = store.lastCommandAt;
 
   const [dialog, setDialog] = useState(null);
@@ -199,6 +208,14 @@ function ShipmentWorkspace({ shipmentId }) {
             engaged for the same reason the command panel is: a command issued
             from a historical view would carry a version that is no longer
             current. */}
+        {/*
+          Absent rather than disabled for a read-only account: a row of greyed
+          out buttons invites someone to work out why they are greyed out,
+          whereas a clean read-only view simply is what it is. The role pill
+          in the header carries the explanation.
+        */}
+        {isOperator ? (
+          <>
         <button
           type="button"
           className="btn btn--sm"
@@ -238,6 +255,12 @@ function ShipmentWorkspace({ shipmentId }) {
           >
             Archive
           </button>
+        )}
+          </>
+        ) : (
+          <span className="eyebrow" title="This account has read-only access to the ledger.">
+            Read-only
+          </span>
         )}
       </div>
 
@@ -358,9 +381,12 @@ function ShipmentWorkspace({ shipmentId }) {
             <LifecyclePlanner
               shipmentId={shipmentId}
               schedule={scheduleQuery.data}
-              disabled={store.isHistorical || isArchived}
+              disabled={!isOperator || store.isHistorical || isArchived}
+              readOnly={!isOperator}
               disabledReason={
-                isArchived
+                !isOperator
+                  ? 'Your account has read-only access. The schedule below is shown in full, but confirming or changing a stage requires an Operator account.'
+                  : isArchived
                   ? 'This shipment is archived, so it accepts no further changes. Restore it to resume - its history is unchanged either way.'
                   : 'Return to the live view before making changes. A command issued from a historical view would carry a version that is no longer current.'
               }
@@ -449,7 +475,7 @@ function ShipmentWorkspace({ shipmentId }) {
         </div>
       </div>
 
-      {dialog === 'amend' ? (
+      {isOperator && dialog === 'amend' ? (
         <ShipmentFormDialog
           mode="amend"
           shipment={live}
@@ -460,7 +486,7 @@ function ShipmentWorkspace({ shipmentId }) {
       ) : null}
 
       <ConfirmDialog
-        open={dialog === 'archive' || dialog === 'restore'}
+        open={isOperator && (dialog === 'archive' || dialog === 'restore')}
         title={dialog === 'archive' ? `Archive ${shipmentId}?` : `Restore ${shipmentId}?`}
         body={
           dialog === 'archive'

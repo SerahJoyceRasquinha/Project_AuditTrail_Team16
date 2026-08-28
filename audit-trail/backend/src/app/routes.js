@@ -27,10 +27,50 @@ export function registerRoutes({ app, container }) {
 
   const api = Router();
 
-  api.post('/auth/login', asyncHandler(async (req, res) => {
-    res.json(authService.login(req.body?.username, req.body?.password));
-  }));
+  // --- Authentication (public) ---------------------------------------------
+  /**
+   * These three routes are mounted BEFORE `authenticate`, because they are how
+   * a caller obtains a session in the first place. Everything registered after
+   * the `api.use(authenticate(...))` line below requires one.
+   *
+   * They are also neither commands nor queries in the CQRS sense: they do not
+   * touch a shipment, an event or the read model. Placing them outside both
+   * routers keeps that boundary honest rather than smuggling account handling
+   * into one half of the split.
+   */
+
+  /** POST /api/auth/register - create an account and sign in as it. */
+  api.post(
+    '/auth/register',
+    asyncHandler(async (req, res) => {
+      const result = await authService.register(req.body ?? {});
+      res.status(201).json(result);
+    })
+  );
+
+  /** POST /api/auth/login - exchange credentials for a session token. */
+  api.post(
+    '/auth/login',
+    asyncHandler(async (req, res) => {
+      const result = await authService.login(req.body?.username, req.body?.password);
+      res.status(200).json(result);
+    })
+  );
+
   api.use(authenticate(authService));
+
+  /**
+   * GET /api/auth/me - who the current token belongs to.
+   *
+   * This is what lets a page refresh restore the session without the frontend
+   * having to trust anything it stored locally. The browser keeps only the
+   * token; identity and role are re-derived here from the stored account on
+   * every reload, so editing localStorage changes nothing that matters.
+   */
+  api.get('/auth/me', (req, res) => {
+    res.json({ user: req.user });
+  });
+
 
   // --- Command side ---------------------------------------------------------
   api.use(
