@@ -784,7 +784,20 @@ button {
   gap: 6px;
   align-items: center;
 }
+.event__copy {
+  margin-top: 6px;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
 
+.event__copy:hover {
+  opacity: 0.75;
+}
 /* ------------------------------------------------------------- scrubber -- */
 
 .scrubber--engaged {
