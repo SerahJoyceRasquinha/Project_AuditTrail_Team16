@@ -149,7 +149,53 @@ export function EventTimeline({ events, selectedEventId, onSelect, cutoffAt = nu
 
   const cutoffEpoch = cutoffAt ? Date.parse(cutoffAt) : null;
 
-  return (
+const eventTypes = new Set(events.map((event) => event.eventType)).size;
+
+const alertCount = events.filter(
+  (event) => event.eventType === 'TEMPERATURE_SPIKE'
+).length;
+
+const timestamps = events
+  .map((event) => Date.parse(event.timestamp))
+  .filter(Number.isFinite);
+
+const daysCovered =
+  timestamps.length > 0
+    ? Math.max(
+        1,
+        Math.ceil(
+          (Math.max(...timestamps) - Math.min(...timestamps)) /
+            (1000 * 60 * 60 * 24)
+        )
+      )
+    : 0;
+
+return (
+  <>
+    <div className="event-stats">
+      <span>
+        <strong>{events.length}</strong> Events
+      </span>
+
+      <span aria-hidden="true">•</span>
+
+      <span>
+        <strong>{eventTypes}</strong> Event Types
+      </span>
+
+      <span aria-hidden="true">•</span>
+
+      <span>
+        <strong>{alertCount}</strong> Alerts
+      </span>
+
+      <span aria-hidden="true">•</span>
+
+      <span>
+        <strong>{daysCovered}</strong> Days Covered
+      </span>
+    </div>
+
     <ol className="timeline">
       {events.map((event) => (
         <EventCard
@@ -159,7 +205,8 @@ export function EventTimeline({ events, selectedEventId, onSelect, cutoffAt = nu
           onSelect={onSelect}
           dimmed={cutoffEpoch !== null && Date.parse(event.timestamp) > cutoffEpoch}
         />
-      ))}
+            ))}
     </ol>
+  </>
   );
 }
