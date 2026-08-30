@@ -8,6 +8,7 @@ import { EmptyBlock } from './StatusBlocks.jsx';
 export const EventCard = memo(function EventCard({ event, selected, onSelect, dimmed }) {
   const [copiedId, setCopiedId] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [copiedAll, setCopiedAll] = useState(false);
 
   const tone = eventTone(event.eventType);
   const entries = payloadEntries(event.payload);
@@ -31,6 +32,19 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
 
     setTimeout(() => {
       setCopiedHash(false);
+    }, 1500);
+  };
+    const copyAll = async (e) => {
+    e.stopPropagation();
+
+    await navigator.clipboard.writeText(
+      `Event ID: ${event.eventId}\nHash: ${event.hash}`
+    );
+
+    setCopiedAll(true);
+
+    setTimeout(() => {
+      setCopiedAll(false);
     }, 1500);
   };
 
@@ -99,13 +113,22 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
         </button>
 
         <button
-          type="button"
-          className="event__copy"
-          onClick={copyEventHash}
-          aria-label="Copy event hash"
-        >
-          {copiedHash ? 'Copied ✓' : 'Copy hash'}
-        </button>
+  type="button"
+  className="event__copy"
+  onClick={copyEventHash}
+  aria-label="Copy event hash"
+>
+  {copiedHash ? 'Copied ✓' : 'Copy hash'}
+</button>
+
+<button
+  type="button"
+  className="event__copy"
+  onClick={copyAll}
+  aria-label="Copy event ID and hash"
+>
+  {copiedAll ? 'Copied ✓' : 'Copy all'}
+</button>
       </div>
     </li>
   );
