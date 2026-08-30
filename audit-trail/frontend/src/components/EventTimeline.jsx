@@ -4,29 +4,40 @@ import { EmptyBlock } from './StatusBlocks.jsx';
 
 /**
  * One event in the ledger.
- *
- * Memoised because a stream of a few hundred events re-renders on every scrub
- * tick otherwise, and the slider is the one interaction where dropped frames
- * are immediately obvious.
  */
 export const EventCard = memo(function EventCard({ event, selected, onSelect, dimmed }) {
-  const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
+
   const tone = eventTone(event.eventType);
+  const entries = payloadEntries(event.payload);
 
   const copyEventId = async (e) => {
     e.stopPropagation();
 
     await navigator.clipboard.writeText(event.eventId);
-    setCopied(true);
+    setCopiedId(true);
 
     setTimeout(() => {
-      setCopied(false);
+      setCopiedId(false);
+    }, 1500);
+  };
+
+  const copyEventHash = async (e) => {
+    e.stopPropagation();
+
+    await navigator.clipboard.writeText(event.hash);
+    setCopiedHash(true);
+
+    setTimeout(() => {
+      setCopiedHash(false);
     }, 1500);
   };
 
   return (
     <li className="event" style={dimmed ? { opacity: 0.38 } : undefined}>
       <span className={`event__dot event__dot--${tone}`} aria-hidden="true" />
+
       <button
         type="button"
         className={[
@@ -43,6 +54,7 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
         <div className="event__head">
           <span className="event__type">{eventLabel(event.eventType)}</span>
           <span className="event__version">v{event.version}</span>
+
           {event.eventType === 'TEMPERATURE_SPIKE' ? (
             <span className="pill pill--amber">
               <span className="pill__dot" />
@@ -51,8 +63,6 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
           ) : null}
         </div>
 
-        {/* The raw event type is kept visible alongside the friendly label: this
-            is an audit tool, and the stored value is what a dispute turns on. */}
         <div className="event__time mono">
           {formatTimestamp(event.timestamp)} · {event.eventType}
         </div>
@@ -71,36 +81,38 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
         {selected ? (
           <div className="event__chain">
             <span>chain</span>
-            <span>{truncateHash(event.previousHash) }</span>
+            <span>{truncateHash(event.previousHash)}</span>
             <span aria-hidden="true">→</span>
             <span>{truncateHash(event.hash)}</span>
           </div>
         ) : null}
-            </button>
-
-      <button
-        type="button"
-        className="event__copy"
-        onClick={copyEventId}
-        aria-label="Copy event ID"
-      >
-        {copied ? 'Copied ✓' : 'Copy ID'}
       </button>
+
+      <div className="event__actions">
+        <button
+          type="button"
+          className="event__copy"
+          onClick={copyEventId}
+          aria-label="Copy event ID"
+        >
+          {copiedId ? 'Copied ✓' : 'Copy ID'}
+        </button>
+
+        <button
+          type="button"
+          className="event__copy"
+          onClick={copyEventHash}
+          aria-label="Copy event hash"
+        >
+          {copiedHash ? 'Copied ✓' : 'Copy hash'}
+        </button>
+      </div>
     </li>
   );
 });
 
 /**
- * The vertical event timeline (roadmap 10.7).
- *
- * Events are rendered in exactly the order the API returned them. The API sorts
- * by version, which is the deterministic key even when two events share a
- * timestamp — so re-sorting here would only ever introduce a way to be wrong
- * (roadmap 10.8, "Mistake 5").
- *
- * When the scrubber is engaged, events after the scrub point are dimmed rather
- * than hidden: an investigator needs to see that later events exist while
- * examining a moment before them.
+ * The vertical event timeline.
  */
 export function EventTimeline({ events, selectedEventId, onSelect, cutoffAt = null }) {
   if (!events || events.length === 0) {
