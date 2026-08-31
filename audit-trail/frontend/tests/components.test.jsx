@@ -1,6 +1,16 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
+vi.mock('../src/hooks/useShipmentData.js', () => ({
+  useWorkerStatus: () => ({ lag: { behindBy: 0 } }),
+}));
+
+vi.mock('../src/auth/AuthContext.jsx', () => ({
+  useAuth: () => ({ user: { displayName: 'Ava', role: 'Operator' }, logout: vi.fn() }),
+}));
+
+import { AppLayout } from '../src/layouts/AppLayout.jsx';
 import { EventTimeline } from '../src/components/EventTimeline.jsx';
 import { StateScrubber } from '../src/components/StateScrubber.jsx';
 import { SensorChart } from '../src/components/SensorChart.jsx';
@@ -11,6 +21,7 @@ import {
   ShipmentSummary,
 } from '../src/components/ShipmentPanels.jsx';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../src/components/StatusBlocks.jsx';
+import { AuditLogToolbar, filterAuditEvents } from '../src/components/AuditLogToolbar.jsx';
 import { shipmentReducer, shipmentInitialState, VIEW_MODES } from '../src/store/shipmentStore.jsx';
 
 const events = [
@@ -42,6 +53,53 @@ const events = [
     previousHash: 'b'.repeat(64),
   },
 ];
+
+describe('ThemeToggle', () => {
+  test('toggles the document theme between dark and light', () => {
+    render(
+      <MemoryRouter>
+        <AppLayout />
+      </MemoryRouter>
+    );
+
+    const toggle = screen.getByRole('button', { name: /toggle theme/i });
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('light');
+
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+});
+
+describe('AuditLogToolbar', () => {
+  test('filters events by search text, event type and breach state', () => {
+    const filtered = filterAuditEvents(events, 'rotterdam', 'ALL', false);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].eventType).toBe('CONTAINER_CREATED');
+
+    const breachOnly = filterAuditEvents(events, '', 'TEMPERATURE_SPIKE', true);
+    expect(breachOnly).toHaveLength(1);
+    expect(breachOnly[0].eventType).toBe('TEMPERATURE_SPIKE');
+  });
+
+  test('renders the audit log search controls', () => {
+    render(
+      <AuditLogToolbar
+        value=""
+        onChange={() => {}}
+        eventType="ALL"
+        onTypeChange={() => {}}
+        breachOnly={false}
+        onBreachOnlyChange={() => {}}
+      />
+    );
+
+    expect(screen.getByPlaceholderText(/search audit log/i)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /event type/i })).toBeInTheDocument();
+  });
+});
 
 describe('EventTimeline', () => {
   test('renders every event in the order supplied', () => {

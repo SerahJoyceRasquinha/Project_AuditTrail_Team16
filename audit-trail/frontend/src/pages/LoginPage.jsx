@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext.jsx';
+const DEMO_USERS = [
+  { username: 'operator', password: 'operator123', role: 'Operator' },
+  { username: 'auditor', password: 'auditor123', role: 'Auditor' },
+  { username: 'admin', password: 'admin123', role: 'Admin' },
+];
 
 export function validateCredentials({ username, password }) {
   const errors = {};
@@ -39,6 +42,13 @@ export function LoginPage() {
     setFormError(null);
   };
 
+  const applyDemoAccount = (demoUser) => {
+    setCredentials({ username: demoUser.username, password: demoUser.password });
+    setFieldErrors({});
+    setFormError(null);
+  };
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     if (submitting) return;
@@ -75,6 +85,7 @@ export function LoginPage() {
       setCredentials((current) => ({ ...current, password: '' }));
     } finally {
       setSubmitting(false);
+    }
     }
   };
 
@@ -129,6 +140,22 @@ export function LoginPage() {
           <p className="auth-form__alt">
             No account yet? <Link to="/register">Create one</Link>.
           </p>
+
+          <div className="auth-meta">
+            <span className="eyebrow">Demo access</span>
+            <div className="auth-demo-grid" aria-label="Demo accounts">
+              {DEMO_USERS.map((demoUser) => (
+                <button
+                  key={demoUser.username}
+                  type="button"
+                  className="btn btn--ghost btn--sm auth-demo"
+                  onClick={() => applyDemoAccount(demoUser)}
+                >
+                  {demoUser.role}
+                </button>
+              ))}
+            </div>
+          </div>
         </form>
       </div>
     </div>

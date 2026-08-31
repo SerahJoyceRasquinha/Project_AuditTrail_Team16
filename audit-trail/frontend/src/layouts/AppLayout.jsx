@@ -1,6 +1,24 @@
+import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useWorkerStatus } from '../hooks/useShipmentData.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+
+const THEME_KEY = 'audit-trail-theme';
+
+function getInitialTheme() {
+  try {
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+  } catch {
+    // Ignore storage access issues and fall back to the system preference.
+  }
+
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+
+  return 'dark';
+}
 
 const ROLE_LABELS = { operator: 'Operator', user: 'User' };
 
@@ -31,10 +49,22 @@ export function AppLayout() {
     active: location.pathname !== '/' && isAuthenticated,
   });
   const behind = worker?.lag?.behindBy ?? 0;
+  const { user, logout } = useAuth();
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  };
 
   const signOut = () => {
     logout();
     navigate('/', { replace: true });
+  };
   };
 
   return (
@@ -53,6 +83,17 @@ export function AppLayout() {
             {behind > 0 ? `Projection ${behind} behind` : 'Projection current'}
           </span>
         ) : null}
+
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost theme-toggle"
+          aria-label="Toggle theme"
+          aria-pressed={theme === 'light'}
+          onClick={toggleTheme}
+        >
+          <span aria-hidden="true">{theme === 'dark' ? '☀️' : '🌙'}</span>
+          {theme === 'dark' ? 'Light' : 'Dark'}
+        </button>
 
         <nav className="app__nav">
           {isAuthenticated ? (
@@ -92,6 +133,7 @@ export function AppLayout() {
               </Link>
             </>
           )}
+
         </nav>
       </header>
 
