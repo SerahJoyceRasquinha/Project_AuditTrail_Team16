@@ -43,7 +43,7 @@ five fields the source requires — plus `previousHash`/`hash`.
 ## 4. Immutability (2 min) — the strongest moment
 
 ```bash
-curl -s localhost:4000/api/shipment/SHP-1001/integrity | python3 -m json.tool
+curl -s localhost:4001/api/shipment/SHP-1001/integrity | python3 -m json.tool
 # intact: true
 ```
 
@@ -51,7 +51,7 @@ Now tamper, as a privileged insider would:
 
 ```bash
 mongosh audit_trail --eval 'db.shipment_events.updateOne({aggregateId:"SHP-1001",version:5},{$set:{"payload.temperatureC":4.0}})'
-curl -s localhost:4000/api/shipment/SHP-1001/integrity | python3 -m json.tool
+curl -s localhost:4001/api/shipment/SHP-1001/integrity | python3 -m json.tool
 # intact: false, CONTENT_TAMPERED
 ```
 

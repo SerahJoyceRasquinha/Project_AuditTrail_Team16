@@ -3,6 +3,7 @@ import { connectDatabase } from '../config/database.js';
 import { createLogger } from '../shared/logging/logger.js';
 import { buildContainer } from './dependencies.js';
 import { createApp } from './app.js';
+import { seedDemoAccounts } from '../application/services/demoAccounts.js';
 
 /**
  * One bootstrap used by the API server, the standalone worker, the seed script
@@ -29,6 +30,21 @@ export async function bootstrap({ configOverrides = {}, logger: providedLogger }
       reason: error.message,
     });
   });
+
+  /**
+   * Demo accounts, only when explicitly asked for. See demoAccounts.js - they
+   * are created through the ordinary registration path, and a failure here is
+   * never allowed to stop the server booting.
+   */
+  if (config.auth.enabled && config.auth.seedDemoAccounts) {
+    await seedDemoAccounts({
+      authService: container.authService,
+      userRepository: container.userRepository,
+      logger,
+    }).catch((error) => {
+      logger.warn('Could not seed the demo accounts.', { reason: error.message });
+    });
+  }
 
   return {
     app,

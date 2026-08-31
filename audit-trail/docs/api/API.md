@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL: `http://localhost:4000/api`
+Base URL: `http://localhost:4001/api`
 
 Commands and queries are served by **separate Express routers**, mounted under
 the same `/api` prefix. That matches the source document literally: "Create
@@ -12,24 +12,112 @@ Every response carries `x-correlation-id`; command responses also carry
 
 ---
 
+## Authentication
+
+Every endpoint below requires a session **except** `register` and `login`, which
+are how one is obtained. Send the token as `Authorization: Bearer <token>`. A
+missing or invalid token is **401**; a valid token whose account lacks the role
+for a command is **403**.
+
+Two roles exist and only two: `operator` may issue commands, `user` is strictly
+read-only. There is no administrator. A role is chosen once at registration and
+no endpoint can change it afterwards.
+
+The role is read from the **stored account record on every request**, never from
+the token body, so a token cannot assert authority its account does not have.
+
+### `POST /api/auth/register`
+
+```json
+{
+  "username": "jdoe",
+  "password": "a-password-of-8-or-more",
+  "confirmPassword": "a-password-of-8-or-more",
+  "displayName": "J. Doe",
+  "role": "operator"
+}
+```
+
+`role` defaults to `user` and must be `operator` or `user`; anything else is
+**400**. `confirmPassword` is only checked when supplied, so an API client is not
+forced to send a field that exists for the registration form.
+
+**201** — `{ "token": "…", "user": { "username", "displayName", "role", "createdAt" } }`
+
+**409 `USERNAME_TAKEN`** if the name is in use.
+
+### `POST /api/auth/login`
+
+```json
+{ "username": "jdoe", "password": "a-password-of-8-or-more" }
+```
+
+**200** — same envelope as `register`.
+
+**401 `INVALID_CREDENTIALS`** for both a wrong password and a username that does
+not exist, with the identical message and comparable timing, so the endpoint
+cannot be used to discover which accounts are real.
+
+### `GET /api/auth/me`
+
+**200** — `{ "user": { … } }`, re-derived from the stored account. This is what
+lets a page refresh restore a session without the frontend trusting anything it
+stored locally: editing `localStorage` changes nothing that matters.
+
+The password hash and salt never appear in any of these responses.
+
+### Demo accounts
+
+Set `AUTH_SEED_DEMO_ACCOUNTS=true` to create `operator` / `operator123` and
+`viewer` / `viewer123` at startup, which are the two the sign-in page offers as
+one-click access. They are created through the ordinary registration path, so
+they get the same hashing and the same role rules as any other account, and an
+existing account sharing a username is never overwritten.
+
+Off by default — their passwords are published, so they must never appear in a
+deployment by accident.
+
+---
+
 ## Commands (write side)
 
 ### `POST /api/shipment/create`
 
 Creates a shipment stream. Emits `CONTAINER_CREATED` at version 1.
 
+`shipmentId` is **optional**. Omitting it - which is what the dashboard does -
+asks the server to allocate the next `SHP-N` from an atomic counter. Supplying
+one is still permitted so a backfill or a seed can name its own streams.
+
+`origin` and `destination` take a **structured location**, resolved against the
+same country/subdivision catalogue the form's dropdowns are built from
+(`GET /api/meta/locations`), so a pair the UI offers is by construction a pair
+the backend accepts:
+
 ```json
 {
-  "shipmentId": "SHP-1001",
   "containerCode": "MSKU7845123",
-  "origin": "Chennai, IN",
-  "destination": "Rotterdam, NL",
+  "origin":      { "countryCode": "IN", "stateCode": "TN", "city": "Chennai" },
+  "destination": { "countryCode": "NL", "stateCode": "ZH", "city": "Rotterdam" },
+  "estimatedDurationDays": 21,
   "cargoDescription": "Pharmaceutical cold chain",
   "carrier": "Maersk Line",
   "minTemperatureC": 2,
   "maxTemperatureC": 8
 }
 ```
+
+A plain string (`"origin": "Chennai, IN"`) is still accepted for the backfill and
+seed paths. When one is given the free-text value is stored as-is and no
+normalised location object is produced, so the PDF shows the location "as
+recorded" rather than implying a validated country/state pair it never had.
+
+`estimatedDurationDays` is **required** - a positive whole number of days. It
+defines the planning window that `schedule/plan` validates against.
+
+`containerCode` is normalised on the backend before it reaches the aggregate:
+whitespace stripped, upper-cased. `"  msku 784 5123 "` is stored as
+`"MSKU7845123"`.
 
 `minTemperatureC` / `maxTemperatureC` are optional but must be supplied **both or
 neither** — a one-sided range cannot classify a breach. If omitted, no reading is

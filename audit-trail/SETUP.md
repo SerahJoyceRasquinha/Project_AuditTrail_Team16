@@ -43,7 +43,7 @@ cd audit-trail\frontend
 npm run dev
 ```
 
-The dashboard is at http://localhost:5173 and the API at http://localhost:4000.
+The dashboard is at http://localhost:5173 and the API at http://localhost:4001.
 
 ## Tests
 

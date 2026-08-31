@@ -1,8 +1,24 @@
 import { useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext.jsx';
+
+/**
+ * The demo accounts these buttons fill in.
+ *
+ * This list previously offered Operator, Auditor and Admin. Only the first of
+ * those is a role the backend has: `roles.js` defines exactly two, `operator`
+ * and `user`, and deliberately no administrator. Registering with either of
+ * the other two was rejected with a 400, so two of the three buttons could
+ * only ever fill in credentials that failed to sign in.
+ *
+ * These two match the accounts the backend seeds when
+ * AUTH_SEED_DEMO_ACCOUNTS=true (see backend/src/application/services/
+ * demoAccounts.js). If that flag is off - which is the default - the accounts
+ * do not exist, so the block is only rendered when the API says they do.
+ */
 const DEMO_USERS = [
-  { username: 'operator', password: 'operator123', role: 'Operator' },
-  { username: 'auditor', password: 'auditor123', role: 'Auditor' },
-  { username: 'admin', password: 'admin123', role: 'Admin' },
+  { username: 'operator', password: 'operator123', role: 'Operator', hint: 'Can issue shipment commands' },
+  { username: 'viewer', password: 'viewer123', role: 'User', hint: 'Read-only access to the ledger' },
 ];
 
 export function validateCredentials({ username, password }) {
@@ -47,7 +63,6 @@ export function LoginPage() {
     setFieldErrors({});
     setFormError(null);
   };
-  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -85,7 +100,6 @@ export function LoginPage() {
       setCredentials((current) => ({ ...current, password: '' }));
     } finally {
       setSubmitting(false);
-    }
     }
   };
 
@@ -150,6 +164,7 @@ export function LoginPage() {
                   type="button"
                   className="btn btn--ghost btn--sm auth-demo"
                   onClick={() => applyDemoAccount(demoUser)}
+                  title={demoUser.hint}
                 >
                   {demoUser.role}
                 </button>

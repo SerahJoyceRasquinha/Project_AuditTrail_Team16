@@ -88,7 +88,7 @@ cd frontend && npm run dev    # terminal 2
 5. **Immutability** —
    ```bash
    mongosh audit_trail --eval 'db.shipment_events.updateOne({aggregateId:"SHP-1001",version:3},{$set:{"payload.temperatureC":4}})'
-   curl localhost:4000/api/shipment/SHP-1001/integrity   # intact: false
+   curl localhost:4001/api/shipment/SHP-1001/integrity   # intact: false
    npm run verify:integrity                              # exits non-zero
    ```
 6. **OCC** — open the same shipment in two tabs. Submit a command in tab A, then

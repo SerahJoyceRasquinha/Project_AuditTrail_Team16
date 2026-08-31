@@ -46,7 +46,7 @@ first, or check for a typo.
 The projection worker is not consuming events.
 
 ```bash
-curl localhost:4000/api/meta/worker
+curl localhost:4001/api/meta/worker
 ```
 
 Read `worker.running`, `lag.behindBy` and `deadLetters`.
@@ -101,7 +101,7 @@ projection drifts without anyone noticing.
 
 "Cannot reach the API" means the request never got a response.
 
-1. Is the backend up? `curl localhost:4000/health`
+1. Is the backend up? `curl localhost:4001/health`
 2. In development, vite proxies `/api` — restart `npm run dev` after changing
    `vite.config.js`.
 3. If serving the frontend from another origin, set `CORS_ORIGIN` on the backend

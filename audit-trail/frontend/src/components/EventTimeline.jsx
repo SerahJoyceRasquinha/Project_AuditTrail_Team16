@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { eventLabel, eventTone, formatTimestamp, payloadEntries, truncateHash } from '../utils/format.js';
 import { EmptyBlock } from './StatusBlocks.jsx';
 

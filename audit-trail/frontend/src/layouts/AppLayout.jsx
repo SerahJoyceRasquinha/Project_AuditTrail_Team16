@@ -49,7 +49,7 @@ export function AppLayout() {
     active: location.pathname !== '/' && isAuthenticated,
   });
   const behind = worker?.lag?.behindBy ?? 0;
-  const { user, logout } = useAuth();
+
   const [theme, setTheme] = useState(getInitialTheme);
 
   useEffect(() => {
@@ -64,7 +64,6 @@ export function AppLayout() {
   const signOut = () => {
     logout();
     navigate('/', { replace: true });
-  };
   };
 
   return (

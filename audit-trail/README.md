@@ -192,7 +192,7 @@ and `remove` on the events collection ([setup](docs/database/DATABASE.md)).
 # Edit history behind the application's back:
 mongosh audit_trail --eval 'db.shipment_events.updateOne({aggregateId:"SHP-1001",version:5},{$set:{"payload.temperatureC":4}})'
 
-curl localhost:4000/api/shipment/SHP-1001/integrity   # → intact: false
+curl localhost:4001/api/shipment/SHP-1001/integrity   # → intact: false
 npm run verify:integrity                              # → exits non-zero
 ```
 

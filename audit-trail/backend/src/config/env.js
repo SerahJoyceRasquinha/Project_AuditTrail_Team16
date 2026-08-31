@@ -62,6 +62,16 @@ export function loadConfig(overrides = {}) {
       tokenSecret: readString('AUTH_TOKEN_SECRET', ''),
       /** Session lifetime. 12 hours by default - about one working shift. */
       tokenTtlMs: readInt('AUTH_TOKEN_TTL_MS', 43_200_000),
+      /**
+       * Creates the two demo accounts the sign-in page offers, if they do not
+       * already exist. Off unless explicitly enabled, because an account with a
+       * published password should never appear in a deployment by accident.
+       *
+       * The accounts are ordinary accounts: they are created through
+       * AuthService.register, so they get the same scrypt hashing, the same
+       * validation and the same role rules as any other. There is no bypass.
+       */
+      seedDemoAccounts: readBool('AUTH_SEED_DEMO_ACCOUNTS', false),
     },
 
     /** Worker (roadmap 12.3). Polling + checkpoint, per roadmap 26. */
