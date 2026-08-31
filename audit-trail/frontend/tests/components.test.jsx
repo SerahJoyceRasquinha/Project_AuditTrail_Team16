@@ -1,6 +1,16 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
+vi.mock('../src/hooks/useShipmentData.js', () => ({
+  useWorkerStatus: () => ({ lag: { behindBy: 0 } }),
+}));
+
+vi.mock('../src/auth/AuthContext.jsx', () => ({
+  useAuth: () => ({ user: { displayName: 'Ava', role: 'Operator' }, logout: vi.fn() }),
+}));
+
+import { AppLayout } from '../src/layouts/AppLayout.jsx';
 import { EventTimeline } from '../src/components/EventTimeline.jsx';
 import { StateScrubber } from '../src/components/StateScrubber.jsx';
 import { SensorChart } from '../src/components/SensorChart.jsx';
@@ -42,6 +52,25 @@ const events = [
     previousHash: 'b'.repeat(64),
   },
 ];
+
+describe('ThemeToggle', () => {
+  test('toggles the document theme between dark and light', () => {
+    render(
+      <MemoryRouter>
+        <AppLayout />
+      </MemoryRouter>
+    );
+
+    const toggle = screen.getByRole('button', { name: /toggle theme/i });
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('light');
+
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+});
 
 describe('EventTimeline', () => {
   test('renders every event in the order supplied', () => {
