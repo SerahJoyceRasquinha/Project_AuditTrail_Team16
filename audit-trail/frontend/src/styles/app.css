@@ -559,6 +559,26 @@ button {
   border-top: 1px solid var(--rule-soft);
 }
 
+.audit-log-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr) auto;
+  gap: 12px;
+  padding: 14px 16px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: linear-gradient(180deg, transparent, rgba(52, 195, 176, 0.02));
+}
+
+.audit-log-toolbar__search,
+.audit-log-toolbar__type,
+.audit-log-toolbar__toggle {
+  margin: 0;
+}
+
+.audit-log-toolbar__toggle .btn {
+  min-width: 86px;
+  justify-content: center;
+}
+
 @media (max-width: 900px) {
   .filter-panel__body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -571,6 +591,10 @@ button {
   }
 
   .filter-panel__body {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-log-toolbar {
     grid-template-columns: 1fr;
   }
 }

@@ -12,6 +12,7 @@ import {
 } from '../hooks/useShipmentData.js';
 import { ShipmentStoreProvider, useShipmentStore } from '../store/shipmentStore.jsx';
 import { EventTimeline } from '../components/EventTimeline.jsx';
+import { AuditLogToolbar, filterAuditEvents } from '../components/AuditLogToolbar.jsx';
 import { StateScrubber } from '../components/StateScrubber.jsx';
 import { SensorChart } from '../components/SensorChart.jsx';
 import { LifecyclePlanner } from '../components/LifecyclePlanner.jsx';
@@ -55,6 +56,9 @@ function ShipmentWorkspace({ shipmentId }) {
   const [reason, setReason] = useState('');
   const [notice, setNotice] = useState(null);
   const [exportingFormat, setExportingFormat] = useState(null);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditEventType, setAuditEventType] = useState('ALL');
+  const [breachOnly, setBreachOnly] = useState(false);
 
   const shipmentQuery = useShipment(shipmentId, refreshToken);
   const eventsQuery = useShipmentEvents(shipmentId, refreshToken);
@@ -83,6 +87,10 @@ function ShipmentWorkspace({ shipmentId }) {
   });
 
   const events = eventsQuery.data?.events ?? [];
+  const filteredEvents = useMemo(
+    () => filterAuditEvents(events, auditSearch, auditEventType, breachOnly),
+    [events, auditSearch, auditEventType, breachOnly]
+  );
   const bounds = eventsQuery.data?.bounds ?? null;
 
   /**
@@ -400,27 +408,35 @@ function ShipmentWorkspace({ shipmentId }) {
               <button
                 type="button"
                 className="btn btn--sm"
-                onClick={() => downloadAuditHistory(shipmentId, events, 'json')}
-                disabled={events.length === 0}
+                onClick={() => downloadAuditHistory(shipmentId, filteredEvents, 'json')}
+                disabled={filteredEvents.length === 0}
               >
                 Export JSON
               </button>
               <button
                 type="button"
                 className="btn btn--sm"
-                onClick={() => downloadAuditHistory(shipmentId, events, 'csv')}
-                disabled={events.length === 0}
+                onClick={() => downloadAuditHistory(shipmentId, filteredEvents, 'csv')}
+                disabled={filteredEvents.length === 0}
               >
                 Export CSV
               </button>
             </div>
+            <AuditLogToolbar
+              value={auditSearch}
+              onChange={setAuditSearch}
+              eventType={auditEventType}
+              onTypeChange={setAuditEventType}
+              breachOnly={breachOnly}
+              onBreachOnlyChange={setBreachOnly}
+            />
             {eventsQuery.isLoading && events.length === 0 ? (
               <LoadingBlock label="Loading events" lines={5} />
             ) : eventsQuery.isError ? (
               <ErrorBlock error={eventsQuery.error} onRetry={eventsQuery.refetch} />
             ) : (
               <EventTimeline
-                events={events}
+                events={filteredEvents}
                 selectedEventId={store.selectedEventId}
                 onSelect={store.selectEvent}
                 cutoffAt={store.isHistorical ? store.scrubAt : null}
