@@ -143,7 +143,12 @@ export class ShipmentQueryController {
       logger.debug('Realtime subscriber disconnected.');
     };
 
-    req.on('close', close);
+    res.on('close', close);
     req.on('error', close);
+  };
+
+  getDashboardMetrics = async (req, res) => {
+    const result = await this.#handlers.dashboardMetricsQueryHandler.handle();
+    res.status(200).json(result);
   };
 }

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout.jsx';
 import { LandingPage } from '../pages/LandingPage.jsx';
 import { DashboardPage } from '../pages/DashboardPage.jsx';
+import { StatusDashboardPage } from '../pages/StatusDashboardPage.jsx';
 import { ShipmentPage } from '../pages/ShipmentPage.jsx';
 import { NotFoundPage } from '../pages/NotFoundPage.jsx';
 import { LoginPage } from '../pages/LoginPage.jsx';
@@ -48,6 +49,14 @@ export function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<AppLayout />}>
         <Route index element={<LandingPage />} />
+        <Route
+          path="/status-dashboard"
+          element={
+            <RequireAuth>
+              <StatusDashboardPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/shipments"
           element={
