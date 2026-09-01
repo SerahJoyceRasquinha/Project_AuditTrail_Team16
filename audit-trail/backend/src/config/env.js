@@ -37,7 +37,7 @@ function readBool(name, fallback) {
 export function loadConfig(overrides = {}) {
   const config = {
     nodeEnv: readString('NODE_ENV', 'development'),
-    port: readInt('PORT', 4000),
+    port: readInt('PORT', 4001),
 
     /**
      * PERSISTENCE=mongo   -> real MongoDB (production / normal development)

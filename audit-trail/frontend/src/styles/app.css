@@ -385,6 +385,13 @@ button {
   border-color: rgba(52, 195, 176, 0.5);
 }
 
+/* Copy buttons inside an event card share the glow but not the bar chrome */
+.event__actions.export-actions {
+  background: none;
+  border-bottom: none;
+  padding: 6px 0 2px;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

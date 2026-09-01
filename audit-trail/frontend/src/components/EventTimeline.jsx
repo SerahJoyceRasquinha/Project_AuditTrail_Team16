@@ -102,10 +102,10 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
         ) : null}
       </button>
 
-      <div className="event__actions">
+      <div className="event__actions export-actions">
         <button
           type="button"
-          className="event__copy"
+          className="btn btn--sm btn--ghost"
           onClick={copyEventId}
           aria-label="Copy event ID"
         >
@@ -113,22 +113,22 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
         </button>
 
         <button
-  type="button"
-  className="event__copy"
-  onClick={copyEventHash}
-  aria-label="Copy event hash"
->
-  {copiedHash ? 'Copied ✓' : 'Copy hash'}
-</button>
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={copyEventHash}
+          aria-label="Copy event hash"
+        >
+          {copiedHash ? 'Copied ✓' : 'Copy hash'}
+        </button>
 
-<button
-  type="button"
-  className="event__copy"
-  onClick={copyAll}
-  aria-label="Copy event ID and hash"
->
-  {copiedAll ? 'Copied ✓' : 'Copy all'}
-</button>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={copyAll}
+          aria-label="Copy event ID and hash"
+        >
+          {copiedAll ? 'Copied ✓' : 'Copy all'}
+        </button>
       </div>
     </li>
   );

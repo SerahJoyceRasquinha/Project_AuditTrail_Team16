@@ -8,6 +8,7 @@ import {
   validateHistoricalStateQuery,
   validateExpectedVersion,
 } from '../../src/domain/shipment/validators/commandValidators.js';
+import { loadConfig } from '../../src/config/env.js';
 import { ValidationError } from '../../src/shared/errors/AppError.js';
 
 const VALID_CREATE = {
@@ -17,6 +18,22 @@ const VALID_CREATE = {
   destination: 'Rotterdam',
   estimatedDurationDays: 14,
 };
+
+test('the default config binds to the documented API port', () => {
+  const previous = process.env.PORT;
+  delete process.env.PORT;
+
+  try {
+    const config = loadConfig();
+    assert.equal(config.port, 4001);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PORT;
+    } else {
+      process.env.PORT = previous;
+    }
+  }
+});
 
 test('a well-formed create command passes and is normalised', () => {
   const command = validateCreateShipmentCommand({ ...VALID_CREATE, origin: '  Chennai  ' });
