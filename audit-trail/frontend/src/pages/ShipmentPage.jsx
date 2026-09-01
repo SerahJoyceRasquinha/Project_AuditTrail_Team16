@@ -224,46 +224,46 @@ function ShipmentWorkspace({ shipmentId }) {
         */}
         {isOperator ? (
           <>
-        <button
-          type="button"
-          className="btn btn--sm"
-          onClick={() => setDialog('amend')}
-          disabled={store.isHistorical || isArchived || !live}
-          title={
-            isArchived
-              ? 'Restore this shipment before amending it.'
-              : store.isHistorical
-                ? 'Return to the live view to amend this shipment.'
-                : undefined
-          }
-        >
-          Edit details
-        </button>
-        {isArchived ? (
-          <button
-            type="button"
-            className="btn btn--sm"
-            onClick={() => {
-              setReason('');
-              setDialog('restore');
-            }}
-            disabled={store.isHistorical || !live}
-          >
-            Restore
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn--sm"
-            onClick={() => {
-              setReason('');
-              setDialog('archive');
-            }}
-            disabled={store.isHistorical || !live}
-          >
-            Archive
-          </button>
-        )}
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => setDialog('amend')}
+              disabled={store.isHistorical || isArchived || !live}
+              title={
+                isArchived
+                  ? 'Restore this shipment before amending it.'
+                  : store.isHistorical
+                    ? 'Return to the live view to amend this shipment.'
+                    : undefined
+              }
+            >
+              Edit details
+            </button>
+            {isArchived ? (
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => {
+                  setReason('');
+                  setDialog('restore');
+                }}
+                disabled={store.isHistorical || !live}
+              >
+                Restore
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => {
+                  setReason('');
+                  setDialog('archive');
+                }}
+                disabled={store.isHistorical || !live}
+              >
+                Archive
+              </button>
+            )}
           </>
         ) : (
           <span className="eyebrow" title="This account has read-only access to the ledger.">
@@ -395,8 +395,8 @@ function ShipmentWorkspace({ shipmentId }) {
                 !isOperator
                   ? 'Your account has read-only access. The schedule below is shown in full, but confirming or changing a stage requires an Operator account.'
                   : isArchived
-                  ? 'This shipment is archived, so it accepts no further changes. Restore it to resume - its history is unchanged either way.'
-                  : 'Return to the live view before making changes. A command issued from a historical view would carry a version that is no longer current.'
+                    ? 'This shipment is archived, so it accepts no further changes. Restore it to resume - its history is unchanged either way.'
+                    : 'Return to the live view before making changes. A command issued from a historical view would carry a version that is no longer current.'
               }
               onChanged={store.commandSucceeded}
               onConflict={store.commandConflicted}
@@ -455,6 +455,8 @@ function ShipmentWorkspace({ shipmentId }) {
               onTypeChange={setAuditEventType}
               breachOnly={breachOnly}
               onBreachOnlyChange={setBreachOnly}
+              totalCount={events.length}
+              filteredCount={filteredEvents.length}
             />
             {eventsQuery.isLoading && events.length === 0 ? (
               <LoadingBlock label="Loading events" lines={5} />
