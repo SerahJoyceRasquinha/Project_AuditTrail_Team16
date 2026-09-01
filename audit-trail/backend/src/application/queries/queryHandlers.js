@@ -359,3 +359,111 @@ function buildStageBounds(state, window, summary) {
 
   return bounds;
 }
+
+/** GET /api/meta/dashboard-metrics - KPI dashboard data */
+export class DashboardMetricsQueryHandler {
+  #readModel;
+
+  constructor({ readModelRepository }) {
+    this.#readModel = readModelRepository;
+  }
+
+  async handle() {
+    // Fetch all shipments without pagination to aggregate metrics
+    const result = await this.#readModel.list({ pageSize: 10000, view: 'active' });
+    const allShipments = result.items;
+
+    // Initialize metrics
+    const metrics = {
+      totalShipments: allShipments.length,
+      activeShipments: allShipments.filter(s => !s.archived).length,
+      byState: {
+        CREATED: 0,
+        IN_TRANSIT: 0,
+        AT_PORT: 0,
+      },
+      withBreaches: 0,
+      totalBreaches: 0,
+      avgBreachesPerShipment: 0,
+      shipmentsByOrigin: {},
+      shipmentsByDestination: {},
+      averageDeliveryTime: 0,
+      onTimeDeliveryRate: 0,
+      overallTemperatureCompliance: 0,
+    };
+
+    let completedShipments = 0;
+    let onTimeShipments = 0;
+    let totalDeliveryHours = 0;
+
+    for (const shipment of allShipments) {
+      // Count by state
+      if (shipment.currentState && metrics.byState[shipment.currentState] !== undefined) {
+        metrics.byState[shipment.currentState]++;
+      }
+
+      // Temperature breach metrics
+      if (shipment.temperatureBreachCount > 0) {
+        metrics.withBreaches++;
+        metrics.totalBreaches += shipment.temperatureBreachCount;
+      }
+
+      // Origin/Destination breakdown
+      if (shipment.origin) {
+        metrics.shipmentsByOrigin[shipment.origin] = (metrics.shipmentsByOrigin[shipment.origin] || 0) + 1;
+      }
+      if (shipment.destination) {
+        metrics.shipmentsByDestination[shipment.destination] = (metrics.shipmentsByDestination[shipment.destination] || 0) + 1;
+      }
+
+      // Delivery time metrics (for completed shipments)
+      if (shipment.unloadedAt && shipment.createdAt) {
+        completedShipments++;
+        const createdTime = new Date(shipment.createdAt).getTime();
+        const unloadedTime = new Date(shipment.unloadedAt).getTime();
+        const deliveryHours = (unloadedTime - createdTime) / (1000 * 60 * 60);
+        totalDeliveryHours += deliveryHours;
+
+        // Check if on-time (within estimated duration)
+        if (shipment.estimatedDurationDays) {
+          const estimatedHours = shipment.estimatedDurationDays * 24;
+          if (deliveryHours <= estimatedHours) {
+            onTimeShipments++;
+          }
+        }
+      }
+    }
+
+    // Calculate derived metrics
+    if (completedShipments > 0) {
+      metrics.averageDeliveryTime = Math.round(totalDeliveryHours / completedShipments / 24 * 100) / 100; // in days
+      metrics.onTimeDeliveryRate = Math.round((onTimeShipments / completedShipments) * 100);
+    }
+
+    if (allShipments.length > 0) {
+      metrics.avgBreachesPerShipment = Math.round((metrics.totalBreaches / allShipments.length) * 100) / 100;
+      // Temperature compliance: (shipments without breaches / total) * 100
+      metrics.overallTemperatureCompliance = Math.round(
+        ((allShipments.length - metrics.withBreaches) / allShipments.length) * 100
+      );
+    }
+
+    // Sort origin/destination by count (descending) and limit to top 5
+    const sortedOrigins = Object.entries(metrics.shipmentsByOrigin)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
+
+    const sortedDestinations = Object.entries(metrics.shipmentsByDestination)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
+
+    return {
+      ...metrics,
+      shipmentsByOrigin: sortedOrigins,
+      shipmentsByDestination: sortedDestinations,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}

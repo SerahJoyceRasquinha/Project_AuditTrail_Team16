@@ -112,6 +112,13 @@ export function AppLayout() {
                 </span>
               </span>
               <Link
+                to="/status-dashboard"
+                className="btn btn--sm btn--ghost"
+                aria-current={location.pathname === '/status-dashboard' ? 'page' : undefined}
+              >
+                📊 Metrics
+              </Link>
+              <Link
                 to="/shipments"
                 className="btn btn--sm btn--ghost"
                 aria-current={location.pathname === '/shipments' ? 'page' : undefined}

@@ -16,6 +16,9 @@ export function createShipmentQueryRoutes({ controller }) {
 
   router.use(tagCqrsSide('query'));
 
+  /** GET /api/meta/dashboard-metrics - KPI dashboard data */
+  router.get('/meta/dashboard-metrics', asyncHandler(controller.getDashboardMetrics));
+
   /** GET /api/shipments - dashboard list (design decision) */
   router.get('/shipments', asyncHandler(controller.listShipments));
 

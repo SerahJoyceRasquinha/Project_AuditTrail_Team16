@@ -124,6 +124,8 @@ export const getShipmentSchedule = (shipmentId, signal) =>
 
 export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal });
 
+export const getDashboardMetrics = (signal) => request('/api/meta/dashboard-metrics', { signal });
+
 export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });
 
 /**

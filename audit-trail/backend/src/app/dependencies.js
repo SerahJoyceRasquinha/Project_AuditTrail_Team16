@@ -34,6 +34,7 @@ import {
   VerifyIntegrityQueryHandler,
   ReconcileShipmentQueryHandler,
   GetShipmentScheduleQueryHandler,
+  DashboardMetricsQueryHandler,
 } from '../application/queries/queryHandlers.js';
 import { ExportShipmentHistoryQueryHandler } from '../application/queries/exportShipmentHistory.js';
 
@@ -129,6 +130,7 @@ export function buildContainer({ db, config, logger }) {
   const reconcileShipmentQueryHandler = new ReconcileShipmentQueryHandler({ reconciliationService });
   const getShipmentScheduleQueryHandler = new GetShipmentScheduleQueryHandler({ eventStore });
   const exportShipmentHistoryQueryHandler = new ExportShipmentHistoryQueryHandler({ replayService, eventStore });
+  const dashboardMetricsQueryHandler = new DashboardMetricsQueryHandler({ readModelRepository });
 
   // --- Controllers ----------------------------------------------------------
   const shipmentCommandController = new ShipmentCommandController({
@@ -153,6 +155,7 @@ export function buildContainer({ db, config, logger }) {
     reconcileShipmentQueryHandler,
     getShipmentScheduleQueryHandler,
     exportShipmentHistoryQueryHandler,
+    dashboardMetricsQueryHandler,
     // The SSE endpoint needs the bus and the heartbeat interval. Passed as a
     // named bundle rather than smuggled in as a handler, because it is not one.
     realtime: { eventBus, config, logger },
@@ -209,6 +212,7 @@ export function buildContainer({ db, config, logger }) {
       reconcileShipmentQueryHandler,
       getShipmentScheduleQueryHandler,
       exportShipmentHistoryQueryHandler,
+      dashboardMetricsQueryHandler,
     },
     shipmentCommandController,
     shipmentQueryController,
