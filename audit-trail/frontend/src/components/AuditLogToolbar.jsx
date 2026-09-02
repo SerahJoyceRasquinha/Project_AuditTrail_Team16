@@ -52,7 +52,6 @@ export function AuditLogToolbar({
 }) {
   const inputRef = useRef(null);
   const isFiltering = value.trim() !== '' || eventType !== 'ALL' || breachOnly || fromDate !== '' || toDate !== '';
-  const showCount = isFiltering;
 
   const availableTypes = useMemo(() => {
     const types = new Set(events.map((e) => e.eventType));
@@ -163,33 +162,31 @@ export function AuditLogToolbar({
         />
       </label>
 
-      {showCount && (
-        <div className="audit-log-toolbar__count" aria-live="polite">
-          <span className={filteredCount === 0 ? 'audit-count audit-count--empty' : 'audit-count'}>
-            {filteredCount === 0
-              ? 'No matches'
-              : filteredCount === totalCount
-                ? `${totalCount} events`
-                : `${filteredCount} of ${totalCount}`}
-          </span>
-          {isFiltering && (
-            <button
-              type="button"
-              className="btn btn--sm btn--ghost"
-              onClick={() => {
-                onChange('');
-                onTypeChange('ALL');
-                onBreachOnlyChange(false);
-                if (onFromDateChange) onFromDateChange('');
-                if (onToDateChange) onToDateChange('');
-              }}
-              aria-label="Clear all filters"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
+      <div className="audit-log-toolbar__count" aria-live="polite">
+        <span className={filteredCount === 0 ? 'audit-count audit-count--empty' : 'audit-count'}>
+          {filteredCount === 0
+            ? 'No events match the selected filters'
+            : filteredCount === totalCount
+              ? `${totalCount} events`
+              : `Showing ${filteredCount} of ${totalCount} events`}
+        </span>
+        {isFiltering && (
+          <button
+            type="button"
+            className="btn btn--sm btn--ghost"
+            onClick={() => {
+              onChange('');
+              onTypeChange('ALL');
+              onBreachOnlyChange(false);
+              if (onFromDateChange) onFromDateChange('');
+              if (onToDateChange) onToDateChange('');
+            }}
+            aria-label="Clear all filters"
+          >
+            Clear Filters
+          </button>
+        )}
+      </div>
     </div>
   );
 }
