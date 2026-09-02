@@ -137,8 +137,16 @@ export const EventCard = memo(function EventCard({ event, selected, onSelect, di
 /**
  * The vertical event timeline.
  */
-export function EventTimeline({ events, selectedEventId, onSelect, cutoffAt = null }) {
+export function EventTimeline({ events, selectedEventId, onSelect, cutoffAt = null, isFiltering = false }) {
   if (!events || events.length === 0) {
+    if (isFiltering) {
+      return (
+        <EmptyBlock
+          title="No events found"
+          message="No events match your filters."
+        />
+      );
+    }
     return (
       <EmptyBlock
         title="No events recorded"
@@ -149,64 +157,64 @@ export function EventTimeline({ events, selectedEventId, onSelect, cutoffAt = nu
 
   const cutoffEpoch = cutoffAt ? Date.parse(cutoffAt) : null;
 
-const eventTypes = new Set(events.map((event) => event.eventType)).size;
+  const eventTypes = new Set(events.map((event) => event.eventType)).size;
 
-const alertCount = events.filter(
-  (event) => event.eventType === 'TEMPERATURE_SPIKE'
-).length;
+  const alertCount = events.filter(
+    (event) => event.eventType === 'TEMPERATURE_SPIKE'
+  ).length;
 
-const timestamps = events
-  .map((event) => Date.parse(event.timestamp))
-  .filter(Number.isFinite);
+  const timestamps = events
+    .map((event) => Date.parse(event.timestamp))
+    .filter(Number.isFinite);
 
-const daysCovered =
-  timestamps.length > 0
-    ? Math.max(
+  const daysCovered =
+    timestamps.length > 0
+      ? Math.max(
         1,
         Math.ceil(
           (Math.max(...timestamps) - Math.min(...timestamps)) /
-            (1000 * 60 * 60 * 24)
+          (1000 * 60 * 60 * 24)
         )
       )
-    : 0;
+      : 0;
 
-return (
-  <>
-    <div className="event-stats">
-      <span>
-        <strong>{events.length}</strong> Events
-      </span>
+  return (
+    <>
+      <div className="event-stats">
+        <span>
+          <strong>{events.length}</strong> Events
+        </span>
 
-      <span aria-hidden="true">•</span>
+        <span aria-hidden="true">•</span>
 
-      <span>
-        <strong>{eventTypes}</strong> Event Types
-      </span>
+        <span>
+          <strong>{eventTypes}</strong> Event Types
+        </span>
 
-      <span aria-hidden="true">•</span>
+        <span aria-hidden="true">•</span>
 
-      <span>
-        <strong>{alertCount}</strong> Alerts
-      </span>
+        <span>
+          <strong>{alertCount}</strong> Alerts
+        </span>
 
-      <span aria-hidden="true">•</span>
+        <span aria-hidden="true">•</span>
 
-      <span>
-        <strong>{daysCovered}</strong> Days Covered
-      </span>
-    </div>
+        <span>
+          <strong>{daysCovered}</strong> Days Covered
+        </span>
+      </div>
 
-    <ol className="timeline">
-      {events.map((event) => (
-        <EventCard
-          key={event.eventId}
-          event={event}
-          selected={event.eventId === selectedEventId}
-          onSelect={onSelect}
-          dimmed={cutoffEpoch !== null && Date.parse(event.timestamp) > cutoffEpoch}
-        />
-            ))}
-    </ol>
-  </>
+      <ol className="timeline">
+        {events.map((event) => (
+          <EventCard
+            key={event.eventId}
+            event={event}
+            selected={event.eventId === selectedEventId}
+            onSelect={onSelect}
+            dimmed={cutoffEpoch !== null && Date.parse(event.timestamp) > cutoffEpoch}
+          />
+        ))}
+      </ol>
+    </>
   );
 }

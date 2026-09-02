@@ -503,6 +503,7 @@ function ShipmentWorkspace({ shipmentId }) {
                 selectedEventId={store.selectedEventId}
                 onSelect={store.selectEvent}
                 cutoffAt={store.isHistorical ? store.scrubAt : null}
+                isFiltering={events.length > 0 && filteredEvents.length === 0}
               />
             )}
           </div>

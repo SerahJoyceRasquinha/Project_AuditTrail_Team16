@@ -2349,3 +2349,21 @@ button {
 .audit-count--empty {
   color: var(--signal-amber);
 }
+
+@media (max-width: 600px) {
+  .audit-log-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .audit-log-toolbar__search,
+  .audit-log-toolbar__type,
+  .audit-log-toolbar__date,
+  .audit-log-toolbar__toggle {
+    width: 100%;
+  }
+
+  .audit-search-hint {
+    display: none;
+  }
+}

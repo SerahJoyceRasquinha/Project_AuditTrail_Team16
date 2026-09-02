@@ -165,7 +165,7 @@ export function AuditLogToolbar({
       <div className="audit-log-toolbar__count" aria-live="polite">
         <span className={filteredCount === 0 ? 'audit-count audit-count--empty' : 'audit-count'}>
           {filteredCount === 0
-            ? 'No events match the selected filters'
+            ? 'No events match your filters.'
             : filteredCount === totalCount
               ? `${totalCount} events`
               : `Showing ${filteredCount} of ${totalCount} events`}
