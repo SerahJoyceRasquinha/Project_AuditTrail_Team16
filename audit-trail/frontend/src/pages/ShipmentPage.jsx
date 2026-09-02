@@ -477,6 +477,7 @@ function ShipmentWorkspace({ shipmentId }) {
               </button>
             </div>
             <AuditLogToolbar
+              events={events}
               value={auditSearch}
               onChange={setAuditSearch}
               eventType={auditEventType}

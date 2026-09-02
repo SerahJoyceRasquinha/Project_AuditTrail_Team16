@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { eventLabel } from '../utils/format.js';
 
 export function filterAuditEvents(events = [], search = '', eventType = 'ALL', breachOnly = false) {
   const query = search.trim().toLowerCase();
@@ -25,6 +26,7 @@ export function filterAuditEvents(events = [], search = '', eventType = 'ALL', b
  * input jumps to the search field — useful during demos.
  */
 export function AuditLogToolbar({
+  events = [],
   value,
   onChange,
   eventType,
@@ -37,6 +39,11 @@ export function AuditLogToolbar({
   const inputRef = useRef(null);
   const isFiltering = value.trim() !== '' || eventType !== 'ALL' || breachOnly;
   const showCount = isFiltering;
+
+  const availableTypes = useMemo(() => {
+    const types = new Set(events.map((e) => e.eventType));
+    return Array.from(types).sort();
+  }, [events]);
 
   /* Focus the search box when the user presses "/" or Ctrl+F */
   useEffect(() => {
@@ -99,18 +106,11 @@ export function AuditLogToolbar({
           aria-label="Filter by event type"
         >
           <option value="ALL">All events</option>
-          <option value="CONTAINER_CREATED">Container created</option>
-          <option value="LOADED_ON_SHIP">Loaded on ship</option>
-          <option value="TEMPERATURE_RECORDED">Temperature recorded</option>
-          <option value="TEMPERATURE_SPIKE">Temperature spike</option>
-          <option value="ARRIVED_AT_PORT">Arrived at port</option>
-          <option value="UNLOADED_FROM_SHIP">Unloaded from ship</option>
-          <option value="SHIPMENT_DETAILS_AMENDED">Details amended</option>
-          <option value="SHIPMENT_ARCHIVED">Shipment archived</option>
-          <option value="SHIPMENT_RESTORED">Shipment restored</option>
-          <option value="SHIPMENT_SCHEDULE_PLANNED">Schedule agreed</option>
-          <option value="SHIPMENT_SCHEDULE_REVISED">Schedule revised</option>
-          <option value="SHIPMENT_SCHEDULE_EXTENDED">Delay recorded</option>
+          {availableTypes.map((type) => (
+            <option key={type} value={type}>
+              {eventLabel(type)}
+            </option>
+          ))}
         </select>
       </label>
 

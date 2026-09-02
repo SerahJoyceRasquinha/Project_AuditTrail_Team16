@@ -84,26 +84,47 @@ describe('AuditLogToolbar', () => {
     expect(breachOnly[0].eventType).toBe('TEMPERATURE_SPIKE');
   });
 
-  test('renders the audit log search controls', () => {
+  test('renders the audit log search controls and derives dynamic options', () => {
     render(
       <AuditLogToolbar
+        events={events}
         value=""
-        onChange={() => {}}
+        onChange={() => { }}
         eventType="ALL"
-        onTypeChange={() => {}}
+        onTypeChange={() => { }}
         breachOnly={false}
-        onBreachOnlyChange={() => {}}
+        onBreachOnlyChange={() => { }}
       />
     );
 
     expect(screen.getByPlaceholderText(/search audit log/i)).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: /event type/i })).toBeInTheDocument();
+
+    // Check that exactly the 3 distinct event types are derived, plus "All events"
+    const combobox = screen.getByRole('combobox', { name: /event type/i });
+    expect(combobox).toBeInTheDocument();
+
+    const options = within(combobox).getAllByRole('option');
+    expect(options).toHaveLength(4);
+
+    expect(options[0]).toHaveTextContent('All events');
+    expect(options[1]).toHaveTextContent('Container created');
+    expect(options[2]).toHaveTextContent('Loaded on ship');
+    expect(options[3]).toHaveTextContent('Temperature spike');
+  });
+
+  test('search and type filter combination works correctly', () => {
+    const renderedEvents = filterAuditEvents(events, 'chennai', 'CONTAINER_CREATED', false);
+    expect(renderedEvents).toHaveLength(1);
+    expect(renderedEvents[0].eventType).toBe('CONTAINER_CREATED');
+
+    const mismatchedEvents = filterAuditEvents(events, 'chennai', 'TEMPERATURE_SPIKE', false);
+    expect(mismatchedEvents).toHaveLength(0);
   });
 });
 
 describe('EventTimeline', () => {
   test('renders every event in the order supplied', () => {
-    render(<EventTimeline events={events} selectedEventId={null} onSelect={() => {}} />);
+    render(<EventTimeline events={events} selectedEventId={null} onSelect={() => { }} />);
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(3);
     // The API sorts by version; the component must not reorder.
@@ -112,23 +133,23 @@ describe('EventTimeline', () => {
   });
 
   test('shows the version and the raw event type for each entry', () => {
-    render(<EventTimeline events={events} selectedEventId={null} onSelect={() => {}} />);
+    render(<EventTimeline events={events} selectedEventId={null} onSelect={() => { }} />);
     expect(screen.getByText('v2')).toBeInTheDocument();
     expect(screen.getByText(/LOADED_ON_SHIP/)).toBeInTheDocument();
   });
 
   test('marks a temperature spike as a breach', () => {
-    render(<EventTimeline events={events} selectedEventId={null} onSelect={() => {}} />);
+    render(<EventTimeline events={events} selectedEventId={null} onSelect={() => { }} />);
     expect(screen.getByText('Breach')).toBeInTheDocument();
   });
 
   test('reveals payload detail and the hash link only for the selected event', () => {
     const { rerender } = render(
-      <EventTimeline events={events} selectedEventId={null} onSelect={() => {}} />
+      <EventTimeline events={events} selectedEventId={null} onSelect={() => { }} />
     );
     expect(screen.queryByText('Vessel')).not.toBeInTheDocument();
 
-    rerender(<EventTimeline events={events} selectedEventId="e2" onSelect={() => {}} />);
+    rerender(<EventTimeline events={events} selectedEventId="e2" onSelect={() => { }} />);
     expect(screen.getByText('Vessel')).toBeInTheDocument();
     expect(screen.getByText('MV Ganges Star')).toBeInTheDocument();
     expect(screen.getByText('chain')).toBeInTheDocument();
@@ -142,7 +163,7 @@ describe('EventTimeline', () => {
   });
 
   test('renders an empty state rather than a blank panel', () => {
-    render(<EventTimeline events={[]} selectedEventId={null} onSelect={() => {}} />);
+    render(<EventTimeline events={[]} selectedEventId={null} onSelect={() => { }} />);
     expect(screen.getByText('No events recorded')).toBeInTheDocument();
   });
 
@@ -151,7 +172,7 @@ describe('EventTimeline', () => {
       <EventTimeline
         events={events}
         selectedEventId={null}
-        onSelect={() => {}}
+        onSelect={() => { }}
         cutoffAt="2026-03-02T12:00:00.000Z"
       />
     );
@@ -172,8 +193,8 @@ describe('StateScrubber', () => {
         bounds={bounds}
         scrubAt={null}
         isHistorical={false}
-        onScrub={() => {}}
-        onReturnToLive={() => {}}
+        onScrub={() => { }}
+        onReturnToLive={() => { }}
         events={events}
       />
     );
@@ -188,8 +209,8 @@ describe('StateScrubber', () => {
         bounds={bounds}
         scrubAt={null}
         isHistorical={false}
-        onScrub={() => {}}
-        onReturnToLive={() => {}}
+        onScrub={() => { }}
+        onReturnToLive={() => { }}
         events={events}
       />
     );
@@ -205,7 +226,7 @@ describe('StateScrubber', () => {
         scrubAt={null}
         isHistorical={false}
         onScrub={onScrub}
-        onReturnToLive={() => {}}
+        onReturnToLive={() => { }}
         events={events}
       />
     );
@@ -220,8 +241,8 @@ describe('StateScrubber', () => {
         bounds={{ firstEventAt: '2026-03-01T08:00:00.000Z', lastEventAt: '2026-03-01T08:00:00.000Z' }}
         scrubAt={null}
         isHistorical={false}
-        onScrub={() => {}}
-        onReturnToLive={() => {}}
+        onScrub={() => { }}
+        onReturnToLive={() => { }}
         events={[events[0]]}
       />
     );
@@ -234,8 +255,8 @@ describe('StateScrubber', () => {
         bounds={bounds}
         scrubAt={null}
         isHistorical={false}
-        onScrub={() => {}}
-        onReturnToLive={() => {}}
+        onScrub={() => { }}
+        onReturnToLive={() => { }}
         events={events}
       />
     );
@@ -246,8 +267,8 @@ describe('StateScrubber', () => {
         bounds={bounds}
         scrubAt="2026-03-02T00:00:00.000Z"
         isHistorical
-        onScrub={() => {}}
-        onReturnToLive={() => {}}
+        onScrub={() => { }}
+        onReturnToLive={() => { }}
         events={events}
       />
     );
@@ -270,18 +291,18 @@ describe('SensorChart', () => {
   };
 
   test('renders the chart and states the acceptable range', () => {
-    const { container } = render(<SensorChart series={series} selectedEventId={null} onSelectEvent={() => {}} />);
+    const { container } = render(<SensorChart series={series} selectedEventId={null} onSelectEvent={() => { }} />);
     expect(container.querySelector('.chart')).toBeTruthy();
     expect(screen.getByText(/Acceptable range/)).toBeInTheDocument();
   });
 
   test('handles a shipment with no readings', () => {
-    render(<SensorChart series={{ ...series, readings: [] }} selectedEventId={null} onSelectEvent={() => {}} />);
+    render(<SensorChart series={{ ...series, readings: [] }} selectedEventId={null} onSelectEvent={() => { }} />);
     expect(screen.getByText('No sensor readings')).toBeInTheDocument();
   });
 
   test('handles a missing series without crashing', () => {
-    render(<SensorChart series={null} selectedEventId={null} onSelectEvent={() => {}} />);
+    render(<SensorChart series={null} selectedEventId={null} onSelectEvent={() => { }} />);
     expect(screen.getByText('No sensor readings')).toBeInTheDocument();
   });
 
@@ -290,7 +311,7 @@ describe('SensorChart', () => {
       <SensorChart
         series={{ ...series, range: { minTemperatureC: null, maxTemperatureC: null } }}
         selectedEventId={null}
-        onSelectEvent={() => {}}
+        onSelectEvent={() => { }}
       />
     );
     expect(screen.getByText(/No temperature range was declared/)).toBeInTheDocument();
@@ -301,7 +322,7 @@ describe('SensorChart', () => {
       <SensorChart
         series={{ ...series, truncatedAt: '2026-03-02T12:00:00.000Z' }}
         selectedEventId={null}
-        onSelectEvent={() => {}}
+        onSelectEvent={() => { }}
       />
     );
     expect(screen.getByText(/Truncated to/)).toBeInTheDocument();
@@ -365,7 +386,7 @@ describe('ReconciliationPanel', () => {
         reconciliation={{ consistent: true, expectedVersion: 4, actualVersion: 4, lagVersions: 0 }}
         isLoading={false}
         isError={false}
-        onRetry={() => {}}
+        onRetry={() => { }}
       />
     );
     expect(screen.getByText('Read model verified')).toBeInTheDocument();
@@ -409,7 +430,7 @@ describe('ConflictDialog', () => {
   };
 
   test('shows both versions and says nothing was written', () => {
-    render(<ConflictDialog conflict={conflict} onReload={() => {}} onDismiss={() => {}} />);
+    render(<ConflictDialog conflict={conflict} onReload={() => { }} onDismiss={() => { }} />);
     expect(screen.getByText('v3')).toBeInTheDocument();
     expect(screen.getByText('v5')).toBeInTheDocument();
     expect(screen.getByText(/Nothing\s+was written to the ledger/)).toBeInTheDocument();
@@ -417,13 +438,13 @@ describe('ConflictDialog', () => {
 
   test('offers a reload action', () => {
     const onReload = vi.fn();
-    render(<ConflictDialog conflict={conflict} onReload={onReload} onDismiss={() => {}} />);
+    render(<ConflictDialog conflict={conflict} onReload={onReload} onDismiss={() => { }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Reload shipment' }));
     expect(onReload).toHaveBeenCalled();
   });
 
   test('renders nothing when there is no conflict', () => {
-    const { container } = render(<ConflictDialog conflict={null} onReload={() => {}} onDismiss={() => {}} />);
+    const { container } = render(<ConflictDialog conflict={null} onReload={() => { }} onDismiss={() => { }} />);
     expect(container).toBeEmptyDOMElement();
   });
 });
