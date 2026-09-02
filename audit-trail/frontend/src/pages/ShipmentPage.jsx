@@ -128,6 +128,14 @@ function ShipmentWorkspace({ shipmentId }) {
   const isArchived = Boolean(live?.archived);
 
   /**
+   * The monitoring window, read the same way the backend derives it: a
+   * shipment is sampled from creation until it is unloaded, and never while
+   * archived. Nothing here decides anything - it only lets the temperature
+   * panel explain itself when it has no readings to draw.
+   */
+  const monitoringStopped = Boolean(live && (live.archived || live.currentState === 'UNLOADED'));
+
+  /**
    * Every management action ends the same way: `store.commandSucceeded()`
    * bumps the refresh token every query on this page depends on, so the
    * summary, the timeline, the chart and the integrity badge all refetch
@@ -360,6 +368,24 @@ function ShipmentWorkspace({ shipmentId }) {
                     {sensorQuery.data.summary.breachCount} breaches
                   </span>
                 ) : null}
+                {/*
+                  Whether this container is still being sampled. Worth stating
+                  beside the chart: a flat line on a delivered shipment means
+                  monitoring ended, not that the temperature stopped changing.
+                */}
+                {live ? (
+                  <span
+                    className={`pill ${monitoringStopped ? 'pill--violet' : 'pill--teal'}`}
+                    title={
+                      monitoringStopped
+                        ? 'This shipment has reached a state where it is no longer sampled.'
+                        : 'Readings are taken automatically, hourly, for as long as this shipment is active.'
+                    }
+                  >
+                    <span className="pill__dot" />
+                    {monitoringStopped ? 'Monitoring ended' : 'Monitoring active'}
+                  </span>
+                ) : null}
               </div>
               {sensorQuery.isLoading && !sensorQuery.data ? (
                 <LoadingBlock label="Loading sensor data" lines={2} />
@@ -370,6 +396,8 @@ function ShipmentWorkspace({ shipmentId }) {
                   series={sensorQuery.data}
                   selectedEventId={store.selectedEventId}
                   onSelectEvent={store.selectEvent}
+                  shipmentCreatedAt={live?.createdAt ?? null}
+                  monitoringStopped={monitoringStopped}
                 />
               )}
             </div>

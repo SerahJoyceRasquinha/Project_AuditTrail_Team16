@@ -102,6 +102,14 @@ export function buildContainer({ db, config, logger }) {
     sensorProvider,
     logger,
     config,
+    /**
+     * The same notification bus the dashboard listens to, so a shipment created
+     * through the API begins being monitored as soon as its creation has been
+     * projected - rather than at the next sweep. The monitor only ever reacts
+     * to the identifier and the event type; it re-reads the stream itself
+     * before doing anything, so this is a hint, not a data channel.
+     */
+    eventBus,
   });
 
   // --- Command handlers (write side) ---------------------------------------

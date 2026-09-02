@@ -294,8 +294,15 @@ export function LifecyclePlanner({ shipmentId, schedule, disabled, disabledReaso
                 <label className="field">
                   <span className="field__label">Tentative date</span>
                   <input
-                    className="input"
+                    /*
+                     * `input--calendar-white` is what paints this control's
+                     * calendar icon white. It is scoped to the stage date
+                     * pickers deliberately: the date filters on the ledger page
+                     * keep the browser's ordinary icon.
+                     */
+                    className="input input--calendar-white"
                     type="date"
+                    data-testid={`planned-date-${stage}`}
                     value={draft[stage]?.plannedDate ?? ''}
                     min={bounds.min ?? undefined}
                     max={bounds.max ?? undefined}

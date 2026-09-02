@@ -12,6 +12,7 @@ import { buildShipmentReport } from '../../src/application/queries/shipmentRepor
 import { silentLogger } from '../../src/shared/logging/logger.js';
 
 const HOUR = 3_600_000;
+const FIRST_READING_DELAY_MS = 60_000;
 
 async function withSystem(t) {
   const system = await createTestSystem();
@@ -19,15 +20,32 @@ async function withSystem(t) {
   return system;
 }
 
-function monitorFor(system, { provider, intervalMs = HOUR, maxCatchUpReadings = 48 } = {}) {
+function monitorFor(
+  system,
+  {
+    provider,
+    intervalMs = HOUR,
+    maxCatchUpReadings = 48,
+    firstReadingDelayMs = FIRST_READING_DELAY_MS,
+    enabled = true,
+    eventBus = null,
+  } = {}
+) {
   return new TemperatureMonitorService({
     eventStore: system.eventStore,
     shipmentCommandService: system.shipmentCommandService,
     sensorProvider: provider ?? new SimulatedSensorProvider(),
     logger: silentLogger,
+    eventBus,
     config: {
       ...system.config,
-      sensors: { ...system.config.sensors, intervalMs, maxCatchUpReadings },
+      sensors: {
+        ...system.config.sensors,
+        enabled,
+        intervalMs,
+        maxCatchUpReadings,
+        firstReadingDelayMs,
+      },
     },
   });
 }
@@ -69,7 +87,17 @@ test('the monitor records readings automatically, with no operator input', async
   assert.ok(readings.length > 0);
 });
 
-test('readings land on hourly boundaries', async (t) => {
+/**
+ * The cadence the requirement sets out: one reading a short delay after the
+ * shipment is created, and every reading after that exactly an hour later.
+ *
+ * This replaces an earlier assertion that readings sat on whole-hour
+ * boundaries. That anchoring is what made a freshly created shipment show
+ * nothing at all for up to an hour - the demonstration failure this work
+ * exists to fix - so the cadence is now measured from creation instead. The
+ * spacing is still pinned exactly; only the origin moved.
+ */
+test('the first reading follows creation by the configured delay, and the rest are hourly', async (t) => {
   const system = await withSystem(t);
   const created = await shipmentCreatedHoursAgo(system, 6);
   await monitorFor(system).sweep();
@@ -79,11 +107,20 @@ test('readings land on hourly boundaries', async (t) => {
     [EVENT_TYPES.TEMPERATURE_RECORDED, EVENT_TYPES.TEMPERATURE_SPIKE].includes(event.eventType)
   );
 
-  for (const reading of readings) {
+  assert.ok(readings.length >= 2, 'six hours of monitoring should produce several readings');
+
+  const createdAt = Date.parse(created.timestamp);
+  assert.equal(
+    Date.parse(readings[0].payload.recordedAt) - createdAt,
+    FIRST_READING_DELAY_MS,
+    'the first observation falls one delay after creation'
+  );
+
+  for (let index = 1; index < readings.length; index += 1) {
     assert.equal(
-      Date.parse(reading.payload.recordedAt) % HOUR,
-      0,
-      'each observation should sit on an hour boundary'
+      Date.parse(readings[index].payload.recordedAt) - Date.parse(readings[index - 1].payload.recordedAt),
+      HOUR,
+      'every later observation is exactly an hour after the one before it'
     );
   }
 });

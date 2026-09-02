@@ -38,6 +38,23 @@
   --signal-red-dim: rgba(232, 97, 93, 0.14);
   --signal-green: #5ec27a;
 
+  /* Surfaces that used to be written as literal colours in the rules below.
+     Naming them is the whole fix for the light theme: a rule that paints
+     rgba(11, 19, 28, .92) is dark in *both* themes, and dark text on it is
+     unreadable in one of them. */
+  --header-bg: rgba(11, 19, 28, 0.92);
+  --surface-translucent: rgba(22, 34, 47, 0.88);
+  --surface-sunken: rgba(16, 27, 38, 0.96);
+  --overlay: rgba(4, 8, 12, 0.72);
+  /* Text that sits on a filled signal colour, rather than beside it. */
+  --on-signal: #06241f;
+  /* The stage date control keeps a dark face in both themes so its white
+     calendar icon is always legible - see the rule near the end of this file. */
+  --date-control-bg: #16222f;
+  --date-control-fg: #e6edf4;
+  --date-control-border: #2f4459;
+  --signal-teal-strong: #45d3c0;
+
   --radius: 4px;
   --radius-lg: 8px;
 
@@ -61,10 +78,29 @@
   --paper-dim: #425466;
   --paper-mute: #61758b;
 
+  /* The signal colours are darkened, not replaced. They keep their meanings -
+     amber is a breach, violet is the past - but the dark-theme values are
+     tuned for a near-black hull and fall to roughly 2:1 against white, which
+     is unreadable as label text. These sit at 4.5:1 or better. */
+  --signal-amber: #a8641a;
+  --signal-teal: #0f7a70;
+  --signal-violet: #5b46c4;
+  --signal-red: #bd3a34;
+  --signal-green: #2f8f4e;
+  --signal-teal-strong: #0c645c;
+
   --signal-amber-dim: rgba(214, 148, 33, 0.12);
   --signal-teal-dim: rgba(19, 131, 120, 0.12);
   --signal-violet-dim: rgba(103, 76, 207, 0.12);
   --signal-red-dim: rgba(184, 59, 54, 0.12);
+
+  --header-bg: rgba(255, 255, 255, 0.94);
+  --surface-translucent: rgba(255, 255, 255, 0.92);
+  --surface-sunken: rgba(240, 245, 250, 0.96);
+  --overlay: rgba(27, 42, 54, 0.45);
+  /* White on a filled teal button, because the dark ink the dark theme uses
+     is barely distinguishable from the darker light-theme teal beneath it. */
+  --on-signal: #ffffff;
 
   --shadow: 0 1px 2px rgba(34, 56, 72, 0.08), 0 18px 40px rgba(34, 56, 72, 0.12);
 }
@@ -134,9 +170,56 @@ button {
   align-items: center;
   gap: 20px;
   padding: 14px 24px;
-  background: rgba(11, 19, 28, 0.92);
+  /* Themed, so header text keeps its contrast in both themes. */
+  background: var(--header-bg);
+  color: var(--paper);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--rule);
+}
+
+/* Everything the header contains inherits readable type, including the pieces
+   that are links or buttons and would otherwise take a browser default. */
+.app__header a,
+.app__header .brand__mark,
+.app__header .identity__name {
+  color: var(--paper);
+}
+
+.app__header .brand__sub,
+.app__header .eyebrow {
+  color: var(--paper-mute);
+}
+
+.app__nav .btn {
+  color: var(--paper);
+}
+
+.app__nav .btn--primary {
+  color: var(--on-signal);
+}
+
+/* Hover, focus, current page and disabled all stay legible rather than
+   resolving to a colour that only worked on the dark hull. */
+.app__nav .btn:hover:not(:disabled),
+.app__header .brand:hover .brand__mark {
+  color: var(--paper);
+  border-color: var(--signal-teal);
+}
+
+.app__nav .btn[aria-current='page'] {
+  color: var(--signal-teal);
+  border-color: var(--signal-teal);
+  background: var(--signal-teal-dim);
+}
+
+.app__nav .btn:disabled {
+  color: var(--paper-mute);
+  opacity: 0.6;
+}
+
+.app__header :focus-visible {
+  outline: 2px solid var(--signal-teal);
+  outline-offset: 2px;
 }
 
 .brand {
@@ -286,7 +369,7 @@ button {
   position: relative;
   z-index: 1;
   padding: 22px;
-  background: rgba(22, 34, 47, 0.88);
+  background: var(--surface-translucent);
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
@@ -578,7 +661,7 @@ button {
 .auth-card {
   width: min(100%, 460px);
   box-shadow: var(--shadow);
-  background: linear-gradient(180deg, rgba(22, 34, 47, 0.9), rgba(16, 27, 38, 0.96));
+  background: linear-gradient(180deg, var(--surface-translucent), var(--surface-sunken));
   border: 1px solid rgba(52, 195, 176, 0.2);
 }
 
@@ -785,12 +868,12 @@ button {
 .btn--primary {
   background: var(--signal-teal);
   border-color: var(--signal-teal);
-  color: #06241f;
+  color: var(--on-signal);
   font-weight: 600;
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: #45d3c0;
+  background: var(--signal-teal-strong);
 }
 
 .btn--ghost {
@@ -1448,7 +1531,7 @@ button {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(4, 8, 12, 0.72);
+  background: var(--overlay);
 }
 
 /*
@@ -1852,7 +1935,7 @@ button {
 
 .lifecycle__stage--done .lifecycle__step {
   background: var(--signal-teal, #34c3b0);
-  color: #04212a;
+  color: var(--on-signal);
 }
 
 .lifecycle__blurb {
@@ -2138,4 +2221,52 @@ button {
   .app__nav {
     gap: 7px;
   }
+}
+
+
+/* ------------------------------------------- tentative-date calendar icon -- */
+
+/*
+ * The date control used to set a tentative date for each shipment stage.
+ *
+ * The requirement is a white calendar icon. The browser's own indicator is a
+ * dark glyph, so it is inverted to white here - and because a white glyph needs
+ * something dark behind it, the control itself is given the hull surface in
+ * both themes rather than only in the dark one. That keeps the icon white
+ * wherever it appears, keeps it legible, and leaves the picker itself entirely
+ * native: nothing about the component is replaced, only painted.
+ *
+ * Scoped to this class on purpose. The date filters on the ledger page use the
+ * ordinary `.input` and are deliberately untouched.
+ */
+.input--calendar-white {
+  /* Renders the native picker popup dark to match the field it opens from. */
+  color-scheme: dark;
+  background: var(--date-control-bg);
+  color: var(--date-control-fg);
+  border-color: var(--date-control-border);
+}
+
+.input--calendar-white::-webkit-calendar-picker-indicator {
+  /* brightness(0) flattens the glyph to black, invert(1) then makes it white -
+     which works whatever the browser's default indicator colour happens to be. */
+  filter: brightness(0) invert(1);
+  opacity: 1;
+  cursor: pointer;
+  padding-left: 6px;
+}
+
+.input--calendar-white::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.82;
+}
+
+/* Firefox exposes no indicator pseudo-element; `color-scheme` above is what
+   makes its native glyph light there. */
+.input--calendar-white:disabled {
+  opacity: 0.55;
+}
+
+.input--calendar-white:focus-visible {
+  outline: 2px solid var(--signal-teal);
+  outline-offset: 2px;
 }

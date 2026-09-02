@@ -42,7 +42,17 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  /**
+   * Arriving straight from the registration form.
+   *
+   * The account exists but no session does, so the message has to say both
+   * things at once: it worked, and there is one more step. Saying only "account
+   * created" would leave someone waiting to be let in.
+   */
+  const justRegistered = Boolean(location.state?.registered);
+  const registeredUsername = location.state?.username ?? '';
+
+  const [credentials, setCredentials] = useState({ username: registeredUsername, password: '' });
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -111,6 +121,12 @@ export function LoginPage() {
         </div>
 
         <form className="panel__body auth-form" onSubmit={submit} noValidate>
+          {justRegistered ? (
+            <p className="form-success" role="status">
+              Your account was created. Sign in with your new credentials to continue.
+            </p>
+          ) : null}
+
           <label className="field">
             <span className="field__label">Username</span>
             <input

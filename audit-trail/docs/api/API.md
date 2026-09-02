@@ -42,7 +42,14 @@ the token body, so a token cannot assert authority its account does not have.
 **400**. `confirmPassword` is only checked when supplied, so an API client is not
 forced to send a field that exists for the registration form.
 
-**201** — `{ "token": "…", "user": { "username", "displayName", "role", "createdAt" } }`
+**201** — `{ "created": true, "user": { "username", "displayName", "role", "createdAt" }, "message": "…" }`
+
+**Registering does not sign you in.** No token is issued here, deliberately:
+creating an account and proving you hold its credentials are two operations, and
+collapsing them means the chosen password is never actually checked against what
+was stored. A caller who wants a session sends the new credentials to
+`/api/auth/login`, which is the only endpoint that issues one. The frontend does
+exactly this — the registration form redirects to the sign-in page.
 
 **409 `USERNAME_TAKEN`** if the name is in use.
 
@@ -52,7 +59,8 @@ forced to send a field that exists for the registration form.
 { "username": "jdoe", "password": "a-password-of-8-or-more" }
 ```
 
-**200** — same envelope as `register`.
+**200** — `{ "token": "…", "user": { … } }`. This is the only response in the API
+that carries a session token.
 
 **401 `INVALID_CREDENTIALS`** for both a wrong password and a username that does
 not exist, with the identical message and comparable timing, so the endpoint
@@ -463,6 +471,20 @@ entered.
 
 What the temperature monitor is doing, and — stated plainly, because it changes
 how the numbers should be read — whether its data is simulated.
+
+The response includes `monitor.monitoredShipmentIds` (the shipments this process
+currently holds a monitor for), `monitor.scheduledReadings` (when each one's next
+observation is due) and `monitor.firstReadingDelayMs`. Between them they answer
+the two questions worth asking of a background job: is this shipment being
+sampled, and is it being sampled exactly once.
+
+**The monitoring cadence.** A shipment is monitored from creation until it is
+unloaded, and never while archived. Its first reading is taken
+`SENSOR_FIRST_READING_DELAY_MS` after creation (one minute by default) and every
+later one `SENSOR_INTERVAL_MS` after the reading before it (one hour). Both are
+derived from the shipment's own event stream rather than stored anywhere, so a
+restarted backend resumes the same schedule instead of starting a new one — and
+a slot that already has a reading is never due again.
 
 
 | Endpoint | Purpose |

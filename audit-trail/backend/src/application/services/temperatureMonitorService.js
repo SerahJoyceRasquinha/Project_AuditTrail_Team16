@@ -1,14 +1,15 @@
-import { SHIPMENT_STATES } from '../../domain/shipment/events/eventTypes.js';
+import { EVENT_TYPES, SHIPMENT_STATES } from '../../domain/shipment/events/eventTypes.js';
 import { replay } from '../../domain/shipment/reducers/shipmentReducer.js';
-import { sleep } from '../../shared/utils/index.js';
 
 /**
  * Automatic temperature monitoring.
  *
- * The requirement is that observations are recorded on an hourly cadence for
- * the duration a shipment is actually being monitored, without anyone typing a
- * number into a form. Three decisions make that work without damaging anything
- * the ledger guarantees:
+ * The requirement is that a shipment starts being monitored the moment it is
+ * created, takes its first observation about a minute later, and is then
+ * sampled hourly until it completes - with nobody typing a number into a form,
+ * and without a restart producing a second set of timers or a second copy of a
+ * reading. Five decisions make that work without damaging anything the ledger
+ * guarantees:
  *
  * **1. It issues commands. It does not write events.**
  * The monitor calls `ShipmentCommandService.recordTemperature`, the same entry
@@ -29,6 +30,23 @@ import { sleep } from '../../shared/utils/index.js';
  * A shipment is monitored from creation until it is unloaded, and never while
  * archived. Both are read from folded state, so a shipment that completes stops
  * being sampled without anything having to switch a flag off.
+ *
+ * **4. Which observations are due is derived too.**
+ * The schedule is a pure function of the stream: the first reading falls
+ * `firstReadingDelayMs` after creation, and each later one an interval after
+ * the reading before it. A slot that already has a reading on the stream is not
+ * due, so re-running a sweep, restarting the process, or processing the same
+ * shipment event twice cannot produce a duplicate observation. This is the
+ * guarantee everything else rests on - the timers below are about *promptness*,
+ * never about correctness.
+ *
+ * **5. At most one timer per shipment, ever.**
+ * `#monitored` holds one entry per shipment and one timer inside it.
+ * Registering a shipment that is already scheduled for the same instant is a
+ * no-op; registering it for a new instant replaces the timer rather than adding
+ * one. Completing, archiving or shutting down clears it. So there is no path -
+ * a duplicated notification, a reconnecting browser, a restarted backend - that
+ * ends with two jobs sampling one container.
  */
 export class TemperatureMonitorService {
   #eventStore;
@@ -36,10 +54,36 @@ export class TemperatureMonitorService {
   #provider;
   #logger;
   #config;
+  #eventBus;
 
   #running = false;
   #stopping = false;
   #loopPromise = null;
+  #unsubscribe = null;
+
+  /**
+   * Interrupts the idle period between sweeps.
+   *
+   * Without it, shutting down would take however long was left on the current
+   * interval - half a minute of a process refusing to die, for no better reason
+   * than a timer nobody can reach.
+   */
+  #wake = null;
+
+  /**
+   * Shipments currently inside their monitoring window.
+   *
+   * `Map<aggregateId, { dueAt: number, timer: Timeout|null }>` - one entry per
+   * shipment, one timer per entry. This is the duplicate-job guard.
+   */
+  #monitored = new Map();
+
+  /**
+   * Shipments being sampled right now. The timer and the sweep can both decide
+   * a shipment is due at the same moment; this makes the second one stand down
+   * instead of racing the first for the same version.
+   */
+  #inFlight = new Set();
 
   #stats = {
     startedAt: null,
@@ -47,21 +91,31 @@ export class TemperatureMonitorService {
     readingsRecorded: 0,
     breachesRecorded: 0,
     shipmentsSkipped: 0,
+    shipmentsRegistered: 0,
+    shipmentsReleased: 0,
+    duplicateRegistrationsIgnored: 0,
     failures: 0,
     lastSweepAt: null,
+    lastReadingAt: null,
     lastError: null,
   };
 
-  constructor({ eventStore, shipmentCommandService, sensorProvider, logger, config }) {
+  constructor({ eventStore, shipmentCommandService, sensorProvider, logger, config, eventBus = null }) {
     this.#eventStore = eventStore;
     this.#commandService = shipmentCommandService;
     this.#provider = sensorProvider;
     this.#logger = logger.child({ component: 'temperature-monitor' });
     this.#config = config;
+    this.#eventBus = eventBus;
   }
 
   get isRunning() {
     return this.#running;
+  }
+
+  /** The shipments this process currently holds a monitoring entry for. */
+  get monitoredShipmentIds() {
+    return [...this.#monitored.keys()];
   }
 
   get stats() {
@@ -70,7 +124,16 @@ export class TemperatureMonitorService {
       source: this.#provider.source,
       description: this.#provider.describes,
       intervalMs: this.#config.sensors.intervalMs,
+      firstReadingDelayMs: this.#firstReadingDelayMs,
+      monitoredShipments: this.#monitored.size,
+      scheduledReadings: [...this.#monitored.entries()]
+        .filter(([, entry]) => entry.timer !== null)
+        .map(([aggregateId, entry]) => ({ aggregateId, dueAt: new Date(entry.dueAt).toISOString() })),
     };
+  }
+
+  get #firstReadingDelayMs() {
+    return this.#config.sensors.firstReadingDelayMs ?? 60_000;
   }
 
   async start() {
@@ -84,18 +147,61 @@ export class TemperatureMonitorService {
     this.#stopping = false;
     this.#stats.startedAt = new Date().toISOString();
 
+    /**
+     * Notifications, so a shipment created through the API starts being
+     * monitored within a moment of its creation rather than at the next sweep.
+     *
+     * The bus publishes *after* the projection has been committed, so by the
+     * time this handler runs the shipment is readable everywhere. The handler
+     * is idempotent, which is what makes at-least-once delivery harmless here.
+     */
+    this.#unsubscribe =
+      this.#eventBus?.subscribe((notification) => {
+        this.handleNotification(notification).catch((error) => {
+          this.#logger.warn('Could not react to a shipment notification.', {
+            aggregateId: notification?.aggregateId,
+            reason: error.message,
+          });
+        });
+      }) ?? null;
+
+    /**
+     * Resume, rather than restart.
+     *
+     * A restarted backend adopts the shipments that were already being
+     * monitored, because "which shipments are active" is answered by the Event
+     * Store, not by anything this process was holding in memory when it died.
+     * Completed and archived shipments are skipped, so a restart never revives
+     * monitoring for a delivered container.
+     */
+    await this.resumeActiveShipments().catch((error) => {
+      this.#logger.warn('Could not resume monitoring for existing shipments.', { reason: error.message });
+    });
+
     this.#logger.info('Temperature monitor started.', {
       source: this.#provider.source,
       intervalMs: this.#config.sensors.intervalMs,
+      firstReadingDelayMs: this.#firstReadingDelayMs,
       sweepIntervalMs: this.#config.sensors.sweepIntervalMs,
+      resumedShipments: this.#monitored.size,
     });
 
     this.#loopPromise = this.#loop();
   }
 
   async stop() {
-    if (!this.#running) return;
+    /**
+     * Timers are cleared even when the loop was never started, because
+     * `sweep()` and `registerShipment()` can both be driven directly - the
+     * tests do exactly that - and an abandoned timer is a leak either way.
+     */
     this.#stopping = true;
+    this.#unsubscribe?.();
+    this.#unsubscribe = null;
+    this.#clearAllTimers();
+    this.#wake?.();
+
+    if (!this.#running) return;
     await this.#loopPromise?.catch(() => {});
     this.#running = false;
     this.#logger.info('Temperature monitor stopped.', this.stats);
@@ -115,16 +221,194 @@ export class TemperatureMonitorService {
           reason: error.message,
         });
       }
-      await sleep(this.#config.sensors.sweepIntervalMs);
+      await this.#idle(this.#config.sensors.sweepIntervalMs);
     }
   }
+
+  /** Waits for the next sweep, or until `stop()` interrupts the wait. */
+  #idle(ms) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.#wake = null;
+        resolve();
+      }, ms);
+      timer.unref?.();
+
+      this.#wake = () => {
+        clearTimeout(timer);
+        this.#wake = null;
+        resolve();
+      };
+
+      if (this.#stopping) this.#wake();
+    });
+  }
+
+  // --- Lifecycle -------------------------------------------------------------
+
+  /**
+   * Reacts to one read-side notification.
+   *
+   * Creation and restoration open the monitoring window; unloading and
+   * archiving close it. Everything else is ignored, because the schedule is
+   * derived from the stream and does not need to be told about every event.
+   */
+  async handleNotification(notification) {
+    const aggregateId = notification?.aggregateId;
+    if (!aggregateId || !this.#config.sensors.enabled) return;
+
+    switch (notification.eventType) {
+      case EVENT_TYPES.CONTAINER_CREATED:
+      case EVENT_TYPES.SHIPMENT_RESTORED:
+        await this.registerShipment(aggregateId);
+        break;
+
+      case EVENT_TYPES.UNLOADED_FROM_SHIP:
+        this.releaseShipment(aggregateId, 'shipment-completed');
+        break;
+
+      case EVENT_TYPES.SHIPMENT_ARCHIVED:
+        this.releaseShipment(aggregateId, 'shipment-archived');
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Brings a shipment under monitoring and schedules its next observation.
+   *
+   * Idempotent in the way that matters: a shipment already scheduled for the
+   * same instant keeps the timer it has. A repeated CONTAINER_CREATED
+   * notification, a reconnecting browser or a second resume therefore cannot
+   * add a second job.
+   */
+  async registerShipment(aggregateId) {
+    if (!this.#config.sensors.enabled) return { registered: false, reason: 'monitoring-disabled' };
+
+    const events = await this.#eventStore.getEvents(aggregateId);
+    if (events.length === 0) return { registered: false, reason: 'no-such-shipment' };
+
+    const state = replay(events);
+
+    if (!this.#isMonitored(state)) {
+      // Covers the completed-shipment case explicitly: a delivered container
+      // never acquires a monitor, however it is announced.
+      const reason = this.#outsideWindowReason(state);
+      this.releaseShipment(aggregateId, reason);
+      return { registered: false, reason };
+    }
+
+    return this.#scheduleNext(aggregateId, state);
+  }
+
+  /** Ends monitoring for one shipment and clears its timer. */
+  releaseShipment(aggregateId, reason = 'released') {
+    const entry = this.#monitored.get(aggregateId);
+    if (!entry) return false;
+
+    if (entry.timer) clearTimeout(entry.timer);
+    this.#monitored.delete(aggregateId);
+    this.#stats.shipmentsReleased += 1;
+    this.#logger.info('Temperature monitoring stopped for a shipment.', { aggregateId, reason });
+    return true;
+  }
+
+  /**
+   * Adopts every shipment currently inside its monitoring window.
+   *
+   * Called at startup. The readings already on each stream decide what is due
+   * next, which is why resuming cannot duplicate an observation taken before
+   * the process died.
+   */
+  async resumeActiveShipments() {
+    const aggregateIds = await this.#eventStore.listAggregateIds();
+    let resumed = 0;
+
+    for (const aggregateId of aggregateIds) {
+      const outcome = await this.registerShipment(aggregateId);
+      if (outcome.registered) resumed += 1;
+    }
+
+    return { resumed, skipped: aggregateIds.length - resumed };
+  }
+
+  /**
+   * Schedules the shipment's next observation.
+   *
+   * Replaces any timer the shipment already holds rather than adding to it, so
+   * the invariant "one shipment, at most one timer" holds by construction.
+   */
+  #scheduleNext(aggregateId, state) {
+    const dueAt = this.#nextDueAt(state);
+    const existing = this.#monitored.get(aggregateId);
+
+    if (existing && existing.dueAt === dueAt && existing.timer) {
+      this.#stats.duplicateRegistrationsIgnored += 1;
+      this.#logger.debug('Shipment is already scheduled for this instant; keeping the existing timer.', {
+        aggregateId,
+        dueAt: new Date(dueAt).toISOString(),
+      });
+      return { registered: true, duplicate: true, dueAt: new Date(dueAt).toISOString() };
+    }
+
+    if (existing?.timer) clearTimeout(existing.timer);
+    if (!existing) this.#stats.shipmentsRegistered += 1;
+
+    const delay = Math.max(dueAt - Date.now(), 0);
+    let timer = null;
+
+    if (!this.#stopping) {
+      /**
+       * A slot that is already due is sampled on a later tick rather than
+       * inline, so `registerShipment` stays a scheduling call and never
+       * performs I/O reentrantly from inside a notification handler.
+       *
+       * `unref` matters: an idle timer must not be the reason a process refuses
+       * to exit, which is what would otherwise make a test suite hang.
+       */
+      timer = setTimeout(() => {
+        this.sampleShipment(aggregateId).catch((error) => {
+          this.#stats.failures += 1;
+          this.#stats.lastError = error.message;
+          this.#logger.warn('A scheduled reading failed; the sweep will retry it.', {
+            aggregateId,
+            reason: error.message,
+          });
+        });
+      }, delay);
+      timer.unref?.();
+    }
+
+    this.#monitored.set(aggregateId, { dueAt, timer });
+
+    this.#logger.debug('Next automatic reading scheduled.', {
+      aggregateId,
+      dueAt: new Date(dueAt).toISOString(),
+      inMs: delay,
+    });
+
+    return { registered: true, duplicate: false, dueAt: new Date(dueAt).toISOString() };
+  }
+
+  #clearAllTimers() {
+    for (const entry of this.#monitored.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+  }
+
+  // --- Sampling --------------------------------------------------------------
 
   /**
    * One pass over every shipment currently inside its monitoring window.
    *
    * Exposed separately from the loop so tests can drive it deterministically
    * rather than waiting on a timer - the same pattern the projection worker
-   * uses.
+   * uses. It also doubles as the recovery path: a shipment created while this
+   * process was down, or while the notification bus was unavailable, is
+   * discovered and registered here.
    */
   async sweep({ now = new Date() } = {}) {
     this.#stats.sweeps += 1;
@@ -138,7 +422,7 @@ export class TemperatureMonitorService {
 
     for (const aggregateId of aggregateIds) {
       if (this.#stopping) break;
-      const outcome = await this.#sampleShipment(aggregateId, now);
+      const outcome = await this.sampleShipment(aggregateId, { now });
       recorded += outcome.recorded;
       if (outcome.skipped) skipped += 1;
     }
@@ -147,82 +431,105 @@ export class TemperatureMonitorService {
     return { recorded, skipped };
   }
 
-  async #sampleShipment(aggregateId, now) {
-    const events = await this.#eventStore.getEvents(aggregateId);
-    if (events.length === 0) return { recorded: 0, skipped: true };
-
-    const state = replay(events);
-
-    if (!this.#isMonitored(state)) return { recorded: 0, skipped: true };
-
-    /**
-     * Which hourly slots still need a reading.
-     *
-     * Slots are anchored to whole hours so a restarted process resumes the same
-     * cadence rather than drifting a few minutes on every boot.
-     *
-     * Only slots *after the last event on the stream* are eligible. That is a
-     * hard constraint, not a preference: the command service refuses an
-     * `occurredAt` earlier than the previous event, because an event stamped
-     * before its predecessor would corrupt the scrubber, the chart and any
-     * dispute about sequence. Catching up therefore fills forward, never
-     * backwards into gaps that have since been written over.
-     */
-    const slots = this.#dueSlots(state, now);
-    if (slots.length === 0) return { recorded: 0, skipped: false };
-
-    let recorded = 0;
-    let expectedVersion = state.version;
-
-    for (const slot of slots) {
-      const reading = await this.#provider.read({
-        aggregateId,
-        containerCode: state.containerCode,
-        at: slot,
-        minTemperatureC: state.minTemperatureC,
-        maxTemperatureC: state.maxTemperatureC,
-      });
-
-      if (!reading) break;
-
-      try {
-        const result = await this.#commandService.recordTemperature({
-          shipmentId: aggregateId,
-          temperatureC: reading.temperatureC,
-          recordedAt: reading.recordedAt,
-          sensorId: reading.sensorId,
-          source: reading.source,
-          occurredAt: slot,
-          expectedVersion,
-        });
-
-        expectedVersion = result.version;
-        recorded += 1;
-        this.#stats.readingsRecorded += 1;
-        if (result.eventType === 'TEMPERATURE_SPIKE') this.#stats.breachesRecorded += 1;
-      } catch (error) {
-        /**
-         * A concurrency conflict here is entirely ordinary: an operator
-         * confirmed a stage while this sweep was mid-flight. The monitor is not
-         * privileged, so it yields and picks the shipment up next sweep with
-         * fresh state, rather than retrying against a version it no longer
-         * holds.
-         */
-        this.#logger.debug('Automatic reading yielded to a concurrent command.', {
-          aggregateId,
-          reason: error.message,
-        });
-        break;
-      }
+  /**
+   * Records whatever observations one shipment is due, and schedules its next.
+   *
+   * This is the single sampling path. The timer calls it, the sweep calls it,
+   * and both are subject to the same in-flight guard and the same slot
+   * derivation - so the two mechanisms cannot between them produce a reading
+   * that either one alone would not have produced.
+   */
+  async sampleShipment(aggregateId, { now = new Date() } = {}) {
+    if (this.#inFlight.has(aggregateId)) {
+      this.#logger.debug('A reading for this shipment is already in flight; standing down.', { aggregateId });
+      return { recorded: 0, skipped: true, reason: 'in-flight' };
     }
 
-    return { recorded, skipped: false };
+    this.#inFlight.add(aggregateId);
+
+    try {
+      const events = await this.#eventStore.getEvents(aggregateId);
+      if (events.length === 0) return { recorded: 0, skipped: true };
+
+      const state = replay(events);
+
+      if (!this.#isMonitored(state)) {
+        const reason = this.#outsideWindowReason(state);
+        this.releaseShipment(aggregateId, reason);
+        return { recorded: 0, skipped: true, reason };
+      }
+
+      const slots = this.#dueSlots(state, now);
+      if (slots.length === 0) {
+        this.#scheduleNext(aggregateId, state);
+        return { recorded: 0, skipped: false };
+      }
+
+      let recorded = 0;
+      let expectedVersion = state.version;
+      let latestReadingAt = state.latestTemperatureAt;
+
+      for (const slot of slots) {
+        const reading = await this.#provider.read({
+          aggregateId,
+          containerCode: state.containerCode,
+          at: slot,
+          minTemperatureC: state.minTemperatureC,
+          maxTemperatureC: state.maxTemperatureC,
+        });
+
+        if (!reading) break;
+
+        try {
+          const result = await this.#commandService.recordTemperature({
+            shipmentId: aggregateId,
+            temperatureC: reading.temperatureC,
+            recordedAt: reading.recordedAt,
+            sensorId: reading.sensorId,
+            source: reading.source,
+            occurredAt: slot,
+            expectedVersion,
+          });
+
+          expectedVersion = result.version;
+          latestReadingAt = reading.recordedAt ?? slot;
+          recorded += 1;
+          this.#stats.readingsRecorded += 1;
+          this.#stats.lastReadingAt = latestReadingAt;
+          if (result.eventType === EVENT_TYPES.TEMPERATURE_SPIKE) this.#stats.breachesRecorded += 1;
+        } catch (error) {
+          /**
+           * A concurrency conflict here is entirely ordinary: an operator
+           * confirmed a stage while this pass was mid-flight. The monitor is
+           * not privileged, so it yields and picks the shipment up next time
+           * with fresh state, rather than retrying against a version it no
+           * longer holds.
+           */
+          this.#logger.debug('Automatic reading yielded to a concurrent command.', {
+            aggregateId,
+            reason: error.message,
+          });
+          break;
+        }
+      }
+
+      /**
+       * Scheduled from the state as it now stands, so the next observation is
+       * an interval after the reading just written rather than after the one
+       * this pass started from.
+       */
+      this.#scheduleNext(aggregateId, { ...state, latestTemperatureAt: latestReadingAt });
+
+      return { recorded, skipped: false };
+    } finally {
+      this.#inFlight.delete(aggregateId);
+    }
   }
 
   /**
    * The monitoring window: created, not yet unloaded, not archived.
    *
-   * Derived from folded state on every sweep. Nothing anywhere stores
+   * Derived from folded state on every pass. Nothing anywhere stores
    * "monitoring: on".
    */
   #isMonitored(state) {
@@ -232,15 +539,50 @@ export class TemperatureMonitorService {
     return true;
   }
 
+  #outsideWindowReason(state) {
+    if (!state.exists) return 'no-such-shipment';
+    if (state.archived) return 'shipment-archived';
+    if (state.currentState === SHIPMENT_STATES.UNLOADED) return 'shipment-completed';
+    return 'outside-monitoring-window';
+  }
+
+  /**
+   * When this shipment's next observation is due, in epoch milliseconds.
+   *
+   * First reading: `firstReadingDelayMs` after creation. Every later one: one
+   * interval after the reading before it. Both are read from the stream, so two
+   * processes - or the same process before and after a restart - compute the
+   * identical answer, which is what makes resuming safe.
+   */
+  #nextDueAt(state) {
+    const createdAt = Date.parse(state.createdAt ?? '');
+    const lastReadingAt = state.latestTemperatureAt ? Date.parse(state.latestTemperatureAt) : null;
+
+    if (Number.isFinite(lastReadingAt)) return lastReadingAt + this.#config.sensors.intervalMs;
+    if (Number.isFinite(createdAt)) return createdAt + this.#firstReadingDelayMs;
+
+    // Nothing to anchor to. Look again one interval from now rather than
+    // inventing a timestamp for the record.
+    return Date.now() + this.#config.sensors.intervalMs;
+  }
+
+  /**
+   * Which observation instants are due and not yet on the stream.
+   *
+   * Only slots *after the last event on the stream* are eligible. That is a
+   * hard constraint, not a preference: the command service refuses an
+   * `occurredAt` earlier than the previous event, because an event stamped
+   * before its predecessor would corrupt the scrubber, the chart and any
+   * dispute about sequence. Catching up therefore fills forward, never
+   * backwards into gaps that have since been written over.
+   */
   #dueSlots(state, now) {
     const intervalMs = this.#config.sensors.intervalMs;
     const lastEventAt = Date.parse(state.lastEventAt ?? state.createdAt);
-    const lastReadingAt = state.latestTemperatureAt ? Date.parse(state.latestTemperatureAt) : null;
-    const anchor = lastReadingAt ?? Date.parse(state.createdAt);
-    if (!Number.isFinite(anchor)) return [];
-
     const slots = [];
-    let cursor = Math.floor(anchor / intervalMs) * intervalMs + intervalMs;
+
+    let cursor = this.#nextDueAt(state);
+    if (!Number.isFinite(cursor)) return [];
 
     while (cursor <= now.getTime() && slots.length < this.#config.sensors.maxCatchUpReadings) {
       // Never before the head of the stream - see the note above.

@@ -218,7 +218,18 @@ export class AuthService {
 
     this.#logger?.info('Account created.', { username: cleanUsername, role: cleanRole });
 
-    return { token: this.#issueToken(cleanUsername), user: toPublicUser(record) };
+    /**
+     * Registration creates an account. It does not create a session.
+     *
+     * No token is issued here, deliberately. Creating an account and proving
+     * you hold its credentials are two different operations, and collapsing
+     * them means the only evidence the password works is that the form
+     * submitted successfully. Signing in afterwards exercises the password
+     * against the stored hash, which is the whole point of storing one.
+     *
+     * The caller is expected to send the new credentials to `login`.
+     */
+    return { created: true, user: toPublicUser(record) };
   }
 
   // --- Login -----------------------------------------------------------------

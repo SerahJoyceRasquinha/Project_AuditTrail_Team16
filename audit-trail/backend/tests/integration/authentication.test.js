@@ -23,6 +23,26 @@ async function withAuthSystem(run) {
   }
 }
 
+/**
+ * Registers an account and then signs in as it.
+ *
+ * Registration deliberately no longer returns a session, so every test that
+ * needs a token now performs the two operations a real caller performs. The
+ * helper asserts the separation on the way through, which means each of the
+ * call sites below quietly re-checks that registration issues nothing - and it
+ * returns the login response, so the assertions that follow read exactly as
+ * they did before.
+ */
+async function registerAndSignIn(http, { username, password, role, displayName }) {
+  const registered = await http.post('/api/auth/register', { username, password, role, displayName });
+  assert.equal(registered.status, 201);
+  assert.equal(registered.body.token, undefined, 'registration must not issue a session token');
+
+  const signedIn = await http.post('/api/auth/login', { username, password });
+  assert.equal(signedIn.status, 200, `the new credentials should sign in: ${JSON.stringify(signedIn.body)}`);
+  return signedIn;
+}
+
 const CREATE_COMMAND = {
   containerCode: 'MSKU0000001',
   origin: 'Chennai, IN',
@@ -32,8 +52,8 @@ const CREATE_COMMAND = {
   estimatedDurationDays: 21,
 };
 
-test('an account can be registered and immediately signs in', async () => {
-  await withAuthSystem(async ({ http }) => {
+test('registering creates the account and nothing else', async () => {
+  await withAuthSystem(async ({ system, http }) => {
     const registered = await http.post('/api/auth/register', {
       username: 'newuser',
       password: 'Password123',
@@ -43,7 +63,87 @@ test('an account can be registered and immediately signs in', async () => {
     assert.equal(registered.status, 201);
     assert.equal(registered.body.user.username, 'newuser');
     assert.equal(registered.body.user.role, 'user');
-    assert.ok(registered.body.token, 'registration should return a session token');
+
+    // The account details are saved exactly as before.
+    const stored = await system.db.collection('users').findOne({ username: 'newuser' });
+    assert.ok(stored, 'the account must be persisted');
+    assert.equal(stored.role, 'user');
+
+    /**
+     * And no session comes with it. Registration and authentication are two
+     * operations; the response carries nothing a client could hold up as
+     * proof of identity.
+     */
+    assert.equal(registered.body.token, undefined, 'registration must not issue a session token');
+    assert.equal(
+      JSON.stringify(registered.body).includes('token'),
+      false,
+      'no token-shaped field of any name may be returned'
+    );
+    assert.match(registered.body.message, /sign in/i, 'the caller should be told to sign in');
+  });
+});
+
+test('a registration response cannot be used to reach a protected route', async () => {
+  await withAuthSystem(async ({ http }) => {
+    const registered = await http.post('/api/auth/register', {
+      username: 'nosession',
+      password: 'Password123',
+      role: 'operator',
+    });
+
+    // Whatever the client tries to present from that response, it is not a
+    // session: the protected surface stays closed until a real sign-in.
+    const candidates = [registered.body.token, registered.body.user?.username, JSON.stringify(registered.body)];
+
+    for (const candidate of candidates) {
+      const response = await fetch(`${http.base}/api/shipments`, {
+        headers: candidate ? { authorization: `Bearer ${candidate}` } : {},
+      });
+      assert.equal(response.status, 401);
+    }
+  });
+});
+
+test('the newly created credentials sign in through the ordinary login route', async () => {
+  await withAuthSystem(async ({ http }) => {
+    await http.post('/api/auth/register', {
+      username: 'thenlogin',
+      password: 'Password123',
+      role: 'operator',
+    });
+
+    const signedIn = await http.post('/api/auth/login', {
+      username: 'thenlogin',
+      password: 'Password123',
+    });
+
+    assert.equal(signedIn.status, 200);
+    assert.ok(signedIn.body.token, 'signing in is what issues a session');
+    assert.equal(signedIn.body.user.role, 'operator');
+
+    const me = await fetch(`${http.base}/api/auth/me`, {
+      headers: { authorization: `Bearer ${signedIn.body.token}` },
+    });
+    assert.equal(me.status, 200);
+    assert.equal((await me.json()).user.username, 'thenlogin');
+  });
+});
+
+test('a failed registration creates neither an account nor a session', async () => {
+  await withAuthSystem(async ({ system, http }) => {
+    const rejected = await http.post('/api/auth/register', {
+      username: 'sh',
+      password: 'short',
+      role: 'user',
+    });
+
+    assert.equal(rejected.status, 400);
+    assert.equal(rejected.body.token, undefined);
+    assert.equal(await system.db.collection('users').findOne({ username: 'sh' }), null);
+
+    const login = await http.post('/api/auth/login', { username: 'sh', password: 'short' });
+    assert.equal(login.status, 401, 'an account that was never created cannot sign in');
   });
 });
 
@@ -232,12 +332,12 @@ test('empty credentials are a validation error, not a server error', async () =>
  */
 test('the authorization matrix holds for every combination', async () => {
   await withAuthSystem(async ({ http }) => {
-    const user = await http.post('/api/auth/register', {
+    const user = await registerAndSignIn(http, {
       username: 'reader',
       password: 'Password123',
       role: 'user',
     });
-    const operator = await http.post('/api/auth/register', {
+    const operator = await registerAndSignIn(http, {
       username: 'writer',
       password: 'Password123',
       role: 'operator',
@@ -309,12 +409,12 @@ test('the authorization matrix holds for every combination', async () => {
 
 test('a rejected command appends no event at all', async () => {
   await withAuthSystem(async ({ system, http }) => {
-    const operator = await http.post('/api/auth/register', {
+    const operator = await registerAndSignIn(http, {
       username: 'writer2',
       password: 'Password123',
       role: 'operator',
     });
-    const user = await http.post('/api/auth/register', {
+    const user = await registerAndSignIn(http, {
       username: 'reader2',
       password: 'Password123',
       role: 'user',
@@ -352,12 +452,12 @@ test('a rejected command appends no event at all', async () => {
  */
 test('the role is read from the stored account, not from the token', async () => {
   await withAuthSystem(async ({ http }) => {
-    const user = await http.post('/api/auth/register', {
+    const user = await registerAndSignIn(http, {
       username: 'climber',
       password: 'Password123',
       role: 'user',
     });
-    const operator = await http.post('/api/auth/register', {
+    const operator = await registerAndSignIn(http, {
       username: 'genuine',
       password: 'Password123',
       role: 'operator',
@@ -401,7 +501,7 @@ test('the role is read from the stored account, not from the token', async () =>
 
 test('a request cannot elevate its role through the body or query string', async () => {
   await withAuthSystem(async ({ http }) => {
-    const user = await http.post('/api/auth/register', {
+    const user = await registerAndSignIn(http, {
       username: 'sneaky',
       password: 'Password123',
       role: 'user',
@@ -436,7 +536,7 @@ test('the session survives a restart when a token secret is configured', async (
   });
   const firstHttp = await startHttp(first.app);
 
-  const registered = await firstHttp.post('/api/auth/register', {
+  const registered = await registerAndSignIn(firstHttp, {
     username: 'persistent',
     password: 'Password123',
     role: 'operator',
@@ -471,7 +571,7 @@ test('an expired token is refused', async () => {
     });
     const expiredHttp = await startHttp(system.app);
 
-    const registered = await expiredHttp.post('/api/auth/register', {
+    const registered = await registerAndSignIn(expiredHttp, {
       username: 'expired',
       password: 'Password123',
       role: 'operator',
@@ -505,7 +605,7 @@ test('the account collection is separate from the Event Store', async () => {
 
 test('an operator command still records the acting account on the event', async () => {
   await withAuthSystem(async ({ system, http }) => {
-    const operator = await http.post('/api/auth/register', {
+    const operator = await registerAndSignIn(http, {
       username: 'namedactor',
       password: 'Password123',
       role: 'operator',
@@ -527,7 +627,7 @@ test('an operator command still records the acting account on the event', async 
 
 test('OCC is still enforced for an authorised operator', async () => {
   await withAuthSystem(async ({ http }) => {
-    const operator = await http.post('/api/auth/register', {
+    const operator = await registerAndSignIn(http, {
       username: 'occtester',
       password: 'Password123',
       role: 'operator',

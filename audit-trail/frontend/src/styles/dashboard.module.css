@@ -1,94 +1,122 @@
+/*
+ * Metrics dashboard.
+ *
+ * This module previously carried a palette of its own - a blue-grey page
+ * gradient, white cards, #1f2937 headings, a purple summary banner - none of
+ * which had any relationship to the rest of the application. In Dark mode it
+ * looked like a different product bolted on; in Light mode it happened to look
+ * acceptable only because it was hardcoded light.
+ *
+ * Every colour below now comes from the same tokens `app.css` defines, so this
+ * page follows the theme toggle like every other page and inherits any future
+ * change to the palette automatically. The layout - the grid, the card shapes,
+ * the responsive breakpoints - is deliberately unchanged: the problem was the
+ * colours, not the design.
+ *
+ * Panels reuse the shared `--panel` / `--rule` / `--paper` triple rather than
+ * introducing a second card treatment, which is what makes the dashboard read
+ * as part of the ledger rather than beside it.
+ */
+
 .dashboard {
-  padding: 2rem;
-  max-width: 1600px;
+  padding: 8px 0 24px;
+  max-width: 1440px;
   margin: 0 auto;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
+  color: var(--paper);
 }
 
 .dashboardHeader {
   margin-bottom: 2rem;
-  text-align: center;
 }
 
 .dashboardHeader h1 {
-  font-size: 2.5rem;
-  color: #1f2937;
-  margin: 0 0 0.5rem 0;
-  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  color: var(--paper);
+  margin: 0 0 0.35rem 0;
+  font-weight: 600;
 }
 
 .lastUpdated {
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--paper-mute);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   margin: 0;
 }
 
 .section {
-  margin-bottom: 2.5rem;
-}
-
-.section h2 {
-  font-size: 1.5rem;
-  color: #1f2937;
-  margin: 0 0 1.5rem 0;
-  font-weight: 600;
-  padding-bottom: 0.75rem;
-  border-bottom: 2px solid #3b82f6;
-  display: inline-block;
-}
-
-/* Metrics Grid */
-.metricsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
   margin-bottom: 2rem;
 }
 
+.section h2 {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-mute);
+  margin: 0 0 1rem 0;
+  font-weight: 600;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--signal-teal);
+  display: inline-block;
+}
+
+/* Metrics grid */
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .metricCard {
-  background: white;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #3b82f6;
-  transition: all 0.3s ease;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: 1.15rem;
+  box-shadow: var(--shadow);
+  /* The accent stripe is set per card from the shared chart palette, so a
+     "danger" card is the same red the charts use. */
+  border-left: 3px solid var(--signal-teal);
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .metricCard:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  border-color: var(--signal-teal);
 }
 
 .metricHeader {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
 }
 
 .metricIcon {
-  font-size: 1.5rem;
+  font-size: 1.15rem;
 }
 
 .metricTitle {
   margin: 0;
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 11px;
+  color: var(--paper-mute);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.12em;
 }
 
 .metricValue {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #1f2937;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--paper);
 }
 
 .metricUnit {
-  font-size: 1rem;
-  color: #6b7280;
+  font-size: 0.9rem;
+  color: var(--paper-mute);
   margin-left: 0.25rem;
 }
 
@@ -96,69 +124,99 @@
 .chartsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 2rem;
+  gap: 1.25rem;
 }
 
 .chartContainer {
-  background: white;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
 }
 
 .chartContainer h3 {
   margin: 0 0 1rem 0;
-  font-size: 1.125rem;
-  color: #1f2937;
+  font-size: 0.95rem;
+  color: var(--paper);
   font-weight: 600;
+}
+
+/* Chart internals. Recharts renders SVG text with its own fills, so the axis
+   and legend type is set here rather than fought with inline colours. */
+.chartContainer :global(.recharts-cartesian-axis-tick-value),
+.chartContainer :global(.recharts-legend-item-text),
+.chartContainer :global(.recharts-pie-label-text) {
+  fill: var(--paper-dim);
+  font-size: 11px;
+}
+
+.chartContainer :global(.recharts-cartesian-grid line) {
+  stroke: var(--rule-soft);
+}
+
+/* The tooltip is a plain div, so it takes the panel treatment directly and
+   stops being a white box floating over a dark dashboard. */
+.chartContainer :global(.recharts-default-tooltip) {
+  background: var(--panel-raised) !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: var(--radius);
+  color: var(--paper) !important;
+}
+
+.chartContainer :global(.recharts-tooltip-label),
+.chartContainer :global(.recharts-tooltip-item) {
+  color: var(--paper) !important;
 }
 
 /* Summary */
 .summary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 12px;
-  padding: 2rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--signal-violet);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
 }
 
 .summary h2 {
-  color: white;
-  border-bottom-color: rgba(255, 255, 255, 0.3);
+  color: var(--paper-mute);
+  border-bottom-color: var(--signal-violet);
 }
 
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 2rem;
-  margin-top: 1.5rem;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
 }
 
 .summaryItem {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .summaryLabel {
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-mute);
+  font-weight: 600;
 }
 
 .summaryValue {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: white;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--paper);
 }
 
-/* Responsive Design */
+/* Responsive design */
 @media (max-width: 1024px) {
-  .dashboard {
-    padding: 1.5rem;
-  }
-
   .dashboardHeader h1 {
-    font-size: 2rem;
+    font-size: 1.4rem;
   }
 
   .chartsGrid {
@@ -171,29 +229,21 @@
 }
 
 @media (max-width: 640px) {
-  .dashboard {
-    padding: 1rem;
-  }
-
   .dashboardHeader h1 {
-    font-size: 1.5rem;
-  }
-
-  .section h2 {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
   }
 
   .metricsGrid {
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: 0.75rem;
   }
 
   .metricCard {
-    padding: 1rem;
+    padding: 0.9rem;
   }
 
   .metricValue {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
   }
 
   .summaryGrid {
@@ -202,16 +252,12 @@
   }
 
   .summaryValue {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
   }
 }
 
-/* Loading and Error States */
-.metricCard.loading {
-  opacity: 0.7;
-  pointer-events: none;
-}
-
+/* Loading and error states */
+.metricCard.loading,
 .chartContainer.loading {
   opacity: 0.7;
   pointer-events: none;

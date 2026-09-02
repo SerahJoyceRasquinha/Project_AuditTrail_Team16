@@ -102,15 +102,30 @@ export function RegisterPage() {
     setFormError(null);
 
     try {
-      await register({
+      const created = await register({
         username: form.username.trim(),
         displayName: form.displayName.trim() || undefined,
         password: form.password,
         confirmPassword: form.confirmPassword,
         role: form.role,
       });
-      // Registration signs the new account straight in.
-      navigate('/shipments', { replace: true });
+
+      /**
+       * Registering creates the account; it does not sign you in.
+       *
+       * The new credentials are then used the ordinary way, at the ordinary
+       * sign-in form - which is both the honest thing to do and the only way
+       * the password is ever actually checked against what was stored. The
+       * username travels in router state so the person does not have to retype
+       * it; the password deliberately does not.
+       */
+      navigate('/login', {
+        replace: true,
+        state: {
+          registered: true,
+          username: created?.username ?? form.username.trim().toLowerCase(),
+        },
+      });
     } catch (error) {
       if (error.details?.fields) {
         setFieldErrors(error.details.fields);

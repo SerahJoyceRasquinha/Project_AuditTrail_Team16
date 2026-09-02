@@ -49,12 +49,15 @@ async function signIn() {
   });
 
   if (registered.ok) {
-    const payload = await registered.json();
-    authToken = payload.token;
     process.stdout.write(`Created the seed operator account '${SEED_USERNAME}'.\n`);
-    return;
   }
 
+  /**
+   * Registration creates the account; it does not hand back a session. So the
+   * seeder signs in afterwards with the credentials it just chose - the same
+   * two steps a person takes at the browser, which is the point of seeding
+   * through the API rather than through a private door.
+   */
   const login = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

@@ -87,10 +87,26 @@ export function AuthProvider({ children }) {
     [adopt]
   );
 
-  const register = useCallback(
-    async (details) => adopt(await api.register(details)),
-    [adopt]
-  );
+  /**
+   * Creates an account. It deliberately does not sign in.
+   *
+   * An earlier version passed the registration response to `adopt()`, which
+   * stored a token and made the new account authenticated the instant the form
+   * submitted. Two things were wrong with that. The backend no longer issues a
+   * token here at all, so there is nothing to adopt; and even when it did, the
+   * only evidence the chosen password worked was that the form had been filled
+   * in - the credentials were never actually exercised. So this returns the
+   * created account and leaves the session alone, and the caller sends the user
+   * to sign in with the credentials they just chose.
+   *
+   * Nothing is written to storage, which is also what stops a page refresh
+   * immediately after registering from finding a session that was never
+   * established.
+   */
+  const register = useCallback(async (details) => {
+    const result = await api.register(details);
+    return result.user;
+  }, []);
 
   const logout = useCallback(() => {
     api.clearToken();

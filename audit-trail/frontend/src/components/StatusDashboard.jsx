@@ -1,21 +1,35 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import * as api from '../services/apiClient.js';
 import { ErrorBlock, LoadingBlock } from './StatusBlocks.jsx';
+import { useChartPalette } from '../hooks/useTheme.js';
 import styles from '../styles/dashboard.module.css';
 
-const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  info: '#0ea5e9',
-  purple: '#a855f7',
-};
+/**
+ * Chart colours come from the application's shared palette rather than from a
+ * private list of hex codes.
+ *
+ * The previous list was a generic blue/green/amber set with no relationship to
+ * the rest of the interface, and it was fixed regardless of theme - which is
+ * most of why this dashboard read as a separate application. Mapping the
+ * dashboard's semantic slots onto the shared signal colours means a breach is
+ * the same red here as it is on the shipment page, and both themes are handled
+ * in one place.
+ */
+function slots(palette) {
+  return {
+    primary: palette.blue,
+    success: palette.green,
+    warning: palette.amber,
+    danger: palette.red,
+    info: palette.teal,
+    purple: palette.violet,
+  };
+}
 
-function MetricCard({ title, value, unit = '', icon = '📊', color = 'primary' }) {
+function MetricCard({ title, value, unit = '', icon = '📊', color = 'primary', colors }) {
   return (
-    <div className={styles.metricCard} style={{ borderLeftColor: COLORS[color] }}>
+    <div className={styles.metricCard} style={{ borderLeftColor: colors[color] }}>
       <div className={styles.metricHeader}>
         <span className={styles.metricIcon}>{icon}</span>
         <h3 className={styles.metricTitle}>{title}</h3>
@@ -29,6 +43,9 @@ function MetricCard({ title, value, unit = '', icon = '📊', color = 'primary' 
 }
 
 export function StatusDashboard() {
+  const palette = useChartPalette();
+  const COLORS = slots(palette);
+
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -93,24 +110,28 @@ export function StatusDashboard() {
         <h2>Key Performance Indicators</h2>
         <div className={styles.metricsGrid}>
           <MetricCard
+            colors={COLORS}
             title="Active Shipments"
             value={metrics.activeShipments}
             icon="📦"
             color="info"
           />
           <MetricCard
+            colors={COLORS}
             title="Total Shipments"
             value={metrics.totalShipments}
             icon="🎯"
             color="primary"
           />
           <MetricCard
+            colors={COLORS}
             title="Temperature Compliance"
             value={`${metrics.overallTemperatureCompliance}%`}
             icon="❄️"
             color={metrics.overallTemperatureCompliance >= 95 ? 'success' : 'warning'}
           />
           <MetricCard
+            colors={COLORS}
             title="Shipments with Breaches"
             value={metrics.withBreaches}
             icon="⚠️"
@@ -123,18 +144,21 @@ export function StatusDashboard() {
       <section className={styles.section}>
         <div className={styles.metricsGrid}>
           <MetricCard
+            colors={COLORS}
             title="Total Breaches"
             value={metrics.totalBreaches}
             icon="🔴"
             color="danger"
           />
           <MetricCard
+            colors={COLORS}
             title="Avg Breaches/Shipment"
             value={metrics.avgBreachesPerShipment.toFixed(2)}
             icon="📈"
             color="warning"
           />
           <MetricCard
+            colors={COLORS}
             title="Avg Delivery Time"
             value={metrics.averageDeliveryTime}
             unit=" days"
@@ -142,6 +166,7 @@ export function StatusDashboard() {
             color="primary"
           />
           <MetricCard
+            colors={COLORS}
             title="On-Time Delivery Rate"
             value={`${metrics.onTimeDeliveryRate}%`}
             icon="✅"
@@ -164,16 +189,17 @@ export function StatusDashboard() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
+                  stroke={palette.surface}
                   label={({ name, value }) => `${name}: ${value}`}
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill={COLORS.info}
                   dataKey="value"
                 >
                   {stateData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip contentStyle={tooltipStyle(palette)} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -188,16 +214,17 @@ export function StatusDashboard() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
+                  stroke={palette.surface}
                   label={({ name, value }) => `${name}: ${value}%`}
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill={COLORS.info}
                   dataKey="value"
                 >
                   {complianceData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => `${value}%`} />
+                <Tooltip formatter={(value) => `${value}%`} contentStyle={tooltipStyle(palette)} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -214,10 +241,13 @@ export function StatusDashboard() {
                 <h3>Shipments by Origin</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={originData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
+                    <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+                    <XAxis dataKey="name" stroke={palette.axis} fontSize={11} />
+                    <YAxis stroke={palette.axis} fontSize={11} allowDecimals={false} />
+                    <Tooltip
+                      cursor={{ fill: palette.grid, fillOpacity: 0.35 }}
+                      contentStyle={tooltipStyle(palette)}
+                    />
                     <Bar dataKey="value" fill={COLORS.primary} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -229,10 +259,13 @@ export function StatusDashboard() {
                 <h3>Shipments by Destination</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={destinationData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
+                    <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+                    <XAxis dataKey="name" stroke={palette.axis} fontSize={11} />
+                    <YAxis stroke={palette.axis} fontSize={11} allowDecimals={false} />
+                    <Tooltip
+                      cursor={{ fill: palette.grid, fillOpacity: 0.35 }}
+                      contentStyle={tooltipStyle(palette)}
+                    />
                     <Bar dataKey="value" fill={COLORS.success} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -266,4 +299,18 @@ export function StatusDashboard() {
       </section>
     </div>
   );
+}
+
+/**
+ * Recharts' tooltip is rendered inline, so its surface has to be handed to it
+ * as a style object rather than set in the stylesheet.
+ */
+function tooltipStyle(palette) {
+  return {
+    background: palette.surface,
+    border: `1px solid ${palette.border}`,
+    borderRadius: 4,
+    color: palette.text,
+    fontSize: 12,
+  };
 }

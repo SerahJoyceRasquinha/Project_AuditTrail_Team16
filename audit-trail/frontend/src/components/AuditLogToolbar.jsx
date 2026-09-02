@@ -71,7 +71,7 @@ export function AuditLogToolbar({
             type="search"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Shipment ID, event name, sensor, location…"
+            placeholder="Search audit log — shipment ID, event name, sensor, location…"
             aria-label="Search audit events"
           />
           {value && (

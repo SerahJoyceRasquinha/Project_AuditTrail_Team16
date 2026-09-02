@@ -103,8 +103,27 @@ export function loadConfig(overrides = {}) {
       timeoutMs: readInt('SENSOR_FEED_TIMEOUT_MS', 5000),
       /** The required hourly cadence. Lower it to demonstrate faster. */
       intervalMs: readInt('SENSOR_INTERVAL_MS', 3_600_000),
-      /** How often the monitor looks for shipments that are due a reading. */
-      sweepIntervalMs: readInt('SENSOR_SWEEP_INTERVAL_MS', 60_000),
+      /**
+       * How long after a shipment is created its first reading is taken.
+       *
+       * A newly created shipment is monitored from the moment it exists, but
+       * sampling it in the same instant would be a claim about a container
+       * nobody has connected a probe to yet. One minute is short enough that
+       * the dashboard demonstrates itself while an operator is still looking at
+       * it, and long enough to read as an instrument warming up rather than a
+       * number invented at creation time. Every later reading is an hour after
+       * the one before it.
+       */
+      firstReadingDelayMs: readInt('SENSOR_FIRST_READING_DELAY_MS', 60_000),
+      /**
+       * How often the monitor looks for shipments that are due a reading.
+       *
+       * This is the safety net, not the primary trigger: a shipment schedules
+       * its own first reading the moment the monitor hears about it. The sweep
+       * exists so that a shipment created while the notification bus was
+       * unavailable - or before this process started - is still picked up.
+       */
+      sweepIntervalMs: readInt('SENSOR_SWEEP_INTERVAL_MS', 30_000),
       /** Bounds catch-up after downtime so a restart cannot flood a stream. */
       maxCatchUpReadings: readInt('SENSOR_MAX_CATCHUP', 48),
       excursionChance: Number(readString('SENSOR_EXCURSION_CHANCE', '0.08')),

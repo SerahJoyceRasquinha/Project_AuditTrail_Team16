@@ -39,12 +39,22 @@ export function registerRoutes({ app, container }) {
    * into one half of the split.
    */
 
-  /** POST /api/auth/register - create an account and sign in as it. */
+  /**
+   * POST /api/auth/register - create an account. It does NOT sign you in.
+   *
+   * The response carries the created account and nothing else: no token, no
+   * session, nothing the browser could mistake for authorisation. A caller who
+   * wants a session sends the new credentials to /auth/login, which is the only
+   * endpoint that issues one.
+   */
   api.post(
     '/auth/register',
     asyncHandler(async (req, res) => {
       const result = await authService.register(req.body ?? {});
-      res.status(201).json(result);
+      res.status(201).json({
+        ...result,
+        message: 'Account created. Sign in with these credentials to continue.',
+      });
     })
   );
 
@@ -125,6 +135,12 @@ export function registerRoutes({ app, container }) {
       monitor: {
         running: container.temperatureMonitor.isRunning,
         ...container.temperatureMonitor.stats,
+        /**
+         * Which shipments this process holds a monitor for. Useful when
+         * verifying by hand that a completed shipment really did stop being
+         * sampled, and that a restart adopted the active ones exactly once.
+         */
+        monitoredShipmentIds: container.temperatureMonitor.monitoredShipmentIds,
       },
       /**
        * Stated plainly because it changes how the numbers should be read: a

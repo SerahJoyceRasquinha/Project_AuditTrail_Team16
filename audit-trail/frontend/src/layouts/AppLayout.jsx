@@ -2,23 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useWorkerStatus } from '../hooks/useShipmentData.js';
 import { useAuth } from '../auth/AuthContext.jsx';
-
-const THEME_KEY = 'audit-trail-theme';
-
-function getInitialTheme() {
-  try {
-    const savedTheme = localStorage.getItem(THEME_KEY);
-    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
-  } catch {
-    // Ignore storage access issues and fall back to the system preference.
-  }
-
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  }
-
-  return 'dark';
-}
+import { applyTheme, getInitialTheme, THEMES } from '../hooks/useTheme.js';
 
 const ROLE_LABELS = { operator: 'Operator', user: 'User' };
 
@@ -52,13 +36,14 @@ export function AppLayout() {
 
   const [theme, setTheme] = useState(getInitialTheme);
 
+  // Published to the document element, which is what every themed rule in the
+  // stylesheet - and every chart, through useTheme - actually reads.
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+    applyTheme(theme);
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+    setTheme((current) => (current === THEMES.DARK ? THEMES.LIGHT : THEMES.DARK));
   };
 
   const signOut = () => {

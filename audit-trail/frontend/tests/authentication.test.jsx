@@ -92,9 +92,9 @@ describe('registration validation', () => {
 
 // -------------------------------------------------------------- the sign-in
 
-const renderLogin = () =>
+const renderLogin = (entry = '/login') =>
   render(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter initialEntries={[entry]}>
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -110,6 +110,31 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByLabelText(/username/i)).toBeInTheDocument());
     expect(screen.getByLabelText(/username/i)).toHaveValue('');
     expect(screen.getByLabelText(/password/i)).toHaveValue('');
+  });
+
+  /**
+   * Arriving from the registration form.
+   *
+   * The account exists but the session does not, so the page has to say both
+   * things: it worked, and there is one more step. The username is carried over
+   * as a convenience; the password deliberately is not.
+   */
+  test('announces a completed registration and prefills the new username', async () => {
+    renderLogin({
+      pathname: '/login',
+      state: { registered: true, username: 'freshaccount' },
+    });
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/account was created/i);
+    expect(await screen.findByRole('status')).toHaveTextContent(/sign in/i);
+    expect(screen.getByLabelText(/username/i)).toHaveValue('freshaccount');
+    expect(screen.getByLabelText(/password/i)).toHaveValue('');
+  });
+
+  test('shows no registration notice on an ordinary visit', async () => {
+    renderLogin();
+    await waitFor(() => expect(screen.getByLabelText(/username/i)).toBeInTheDocument());
+    expect(screen.queryByText(/account was created/i)).not.toBeInTheDocument();
   });
 
   test('validates before calling the API', async () => {
@@ -212,6 +237,8 @@ describe('RegisterPage', () => {
         <AuthProvider>
           <Routes>
             <Route path="/register" element={<RegisterPage />} />
+            {/* Where a successful registration is expected to land. */}
+            <Route path="/login" element={<div>Sign in here</div>} />
             <Route path="/shipments" element={<div>Ledger</div>} />
           </Routes>
         </AuthProvider>
@@ -259,11 +286,13 @@ describe('RegisterPage', () => {
     expect(screen.queryByText('Ledger')).not.toBeInTheDocument();
   });
 
-  test('sends the chosen role and signs in on success', async () => {
+  test('sends the chosen role, then hands over to the sign-in page', async () => {
     const register = vi.spyOn(api, 'register').mockResolvedValue({
-      token: 'new-token',
+      created: true,
       user: { username: 'fresh', displayName: 'fresh', role: 'operator' },
     });
+    const login = vi.spyOn(api, 'login');
+    const storeToken = vi.spyOn(api, 'storeToken');
 
     renderRegister();
     fireEvent.change(await screen.findByLabelText(/^username/i), { target: { value: 'fresh' } });
@@ -272,8 +301,45 @@ describe('RegisterPage', () => {
     fireEvent.click(screen.getByRole('radio', { name: /^Operator/ }));
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
-    await screen.findByText('Ledger');
-    expect(register).toHaveBeenCalledWith(expect.objectContaining({ username: 'fresh', role: 'operator' }));
+    // The account is created with the role that was chosen...
+    await waitFor(() =>
+      expect(register).toHaveBeenCalledWith(expect.objectContaining({ username: 'fresh', role: 'operator' }))
+    );
+
+    // ...and the user lands on the sign-in page rather than inside the ledger.
+    expect(await screen.findByText('Sign in here')).toBeInTheDocument();
+    expect(screen.queryByText('Ledger')).not.toBeInTheDocument();
+
+    /**
+     * Nothing was authenticated on the way. No session was requested, and
+     * nothing was written to storage - so refreshing the page at this point
+     * leaves the user signed out, which is the whole point of the change.
+     */
+    expect(login).not.toHaveBeenCalled();
+    expect(storeToken).not.toHaveBeenCalled();
+    expect(localStorage.keys()).toEqual([]);
+  });
+
+  test('a failed registration neither navigates nor creates a session', async () => {
+    vi.spyOn(api, 'register').mockRejectedValue(
+      new ApiError('That username is already taken.', {
+        status: 409,
+        code: 'USERNAME_TAKEN',
+        details: { fields: { username: 'That username is already taken.' } },
+      })
+    );
+    const storeToken = vi.spyOn(api, 'storeToken');
+
+    renderRegister();
+    fireEvent.change(await screen.findByLabelText(/^username/i), { target: { value: 'taken' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Password123' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'Password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByText(/already taken/i)).toBeInTheDocument();
+    expect(screen.queryByText('Sign in here')).not.toBeInTheDocument();
+    expect(storeToken).not.toHaveBeenCalled();
+    expect(localStorage.keys()).toEqual([]);
   });
 });
 
