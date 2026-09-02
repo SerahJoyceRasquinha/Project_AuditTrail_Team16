@@ -68,6 +68,8 @@ function ShipmentWorkspace({ shipmentId }) {
   const [auditSearch, setAuditSearch] = useState('');
   const [auditEventType, setAuditEventType] = useState('ALL');
   const [breachOnly, setBreachOnly] = useState(false);
+  const [auditFromDate, setAuditFromDate] = useState('');
+  const [auditToDate, setAuditToDate] = useState('');
 
   const shipmentQuery = useShipment(shipmentId, refreshToken);
   const eventsQuery = useShipmentEvents(shipmentId, refreshToken);
@@ -97,8 +99,8 @@ function ShipmentWorkspace({ shipmentId }) {
 
   const events = eventsQuery.data?.events ?? [];
   const filteredEvents = useMemo(
-    () => filterAuditEvents(events, auditSearch, auditEventType, breachOnly),
-    [events, auditSearch, auditEventType, breachOnly]
+    () => filterAuditEvents(events, auditSearch, auditEventType, breachOnly, auditFromDate, auditToDate),
+    [events, auditSearch, auditEventType, breachOnly, auditFromDate, auditToDate]
   );
   const bounds = eventsQuery.data?.bounds ?? null;
 
@@ -484,6 +486,10 @@ function ShipmentWorkspace({ shipmentId }) {
               onTypeChange={setAuditEventType}
               breachOnly={breachOnly}
               onBreachOnlyChange={setBreachOnly}
+              fromDate={auditFromDate}
+              onFromDateChange={setAuditFromDate}
+              toDate={auditToDate}
+              onToDateChange={setAuditToDate}
               totalCount={events.length}
               filteredCount={filteredEvents.length}
             />

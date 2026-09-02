@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { eventLabel } from '../utils/format.js';
 
-export function filterAuditEvents(events = [], search = '', eventType = 'ALL', breachOnly = false) {
+export function filterAuditEvents(events = [], search = '', eventType = 'ALL', breachOnly = false, fromDate = '', toDate = '') {
   const query = search.trim().toLowerCase();
 
   return events.filter((event) => {
@@ -15,7 +15,17 @@ export function filterAuditEvents(events = [], search = '', eventType = 'ALL', b
     const matchesType = eventType === 'ALL' || event.eventType === eventType;
     const matchesBreach = !breachOnly || event.eventType === 'TEMPERATURE_SPIKE';
 
-    return matchesSearch && matchesType && matchesBreach;
+    let matchesFromDate = true;
+    if (fromDate) {
+      matchesFromDate = event.timestamp >= fromDate;
+    }
+
+    let matchesToDate = true;
+    if (toDate) {
+      matchesToDate = event.timestamp <= `${toDate}T23:59:59.999Z`;
+    }
+
+    return matchesSearch && matchesType && matchesBreach && matchesFromDate && matchesToDate;
   });
 }
 
@@ -33,11 +43,15 @@ export function AuditLogToolbar({
   onTypeChange,
   breachOnly,
   onBreachOnlyChange,
+  fromDate,
+  onFromDateChange,
+  toDate,
+  onToDateChange,
   totalCount = 0,
   filteredCount = 0,
 }) {
   const inputRef = useRef(null);
-  const isFiltering = value.trim() !== '' || eventType !== 'ALL' || breachOnly;
+  const isFiltering = value.trim() !== '' || eventType !== 'ALL' || breachOnly || fromDate !== '' || toDate !== '';
   const showCount = isFiltering;
 
   const availableTypes = useMemo(() => {
@@ -126,6 +140,29 @@ export function AuditLogToolbar({
         </button>
       </label>
 
+      <label className="field audit-log-toolbar__date">
+        <span className="field__label">From Date</span>
+        <input
+          type="date"
+          className="input input--calendar-white"
+          value={fromDate}
+          onChange={(e) => onFromDateChange(e.target.value)}
+          aria-label="Filter from date"
+        />
+      </label>
+
+      <label className="field audit-log-toolbar__date">
+        <span className="field__label">To Date</span>
+        <input
+          type="date"
+          className="input input--calendar-white"
+          value={toDate}
+          onChange={(e) => onToDateChange(e.target.value)}
+          aria-label="Filter to date"
+          min={fromDate || undefined}
+        />
+      </label>
+
       {showCount && (
         <div className="audit-log-toolbar__count" aria-live="polite">
           <span className={filteredCount === 0 ? 'audit-count audit-count--empty' : 'audit-count'}>
@@ -143,6 +180,8 @@ export function AuditLogToolbar({
                 onChange('');
                 onTypeChange('ALL');
                 onBreachOnlyChange(false);
+                if (onFromDateChange) onFromDateChange('');
+                if (onToDateChange) onToDateChange('');
               }}
               aria-label="Clear all filters"
             >

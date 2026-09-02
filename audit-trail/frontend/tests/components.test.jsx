@@ -75,13 +75,33 @@ describe('ThemeToggle', () => {
 
 describe('AuditLogToolbar', () => {
   test('filters events by search text, event type and breach state', () => {
-    const filtered = filterAuditEvents(events, 'rotterdam', 'ALL', false);
+    const filtered = filterAuditEvents(events, 'rotterdam', 'ALL', false, '', '');
     expect(filtered).toHaveLength(1);
     expect(filtered[0].eventType).toBe('CONTAINER_CREATED');
 
-    const breachOnly = filterAuditEvents(events, '', 'TEMPERATURE_SPIKE', true);
+    const breachOnly = filterAuditEvents(events, '', 'TEMPERATURE_SPIKE', true, '', '');
     expect(breachOnly).toHaveLength(1);
     expect(breachOnly[0].eventType).toBe('TEMPERATURE_SPIKE');
+  });
+
+  test('filters events by starting date', () => {
+    // events[1] is 2026-03-02, events[2] is 2026-03-03
+    const fromDateOnly = filterAuditEvents(events, '', 'ALL', false, '2026-03-02', '');
+    expect(fromDateOnly).toHaveLength(2);
+    expect(fromDateOnly[0].eventId).toBe('e2');
+  });
+
+  test('filters events by end date inclusively', () => {
+    // events[0] is 2026-03-01, events[1] is 2026-03-02
+    const toDateOnly = filterAuditEvents(events, '', 'ALL', false, '', '2026-03-02');
+    expect(toDateOnly).toHaveLength(2);
+    expect(toDateOnly[1].eventId).toBe('e2');
+  });
+
+  test('filters events by a specific date range', () => {
+    const range = filterAuditEvents(events, '', 'ALL', false, '2026-03-02', '2026-03-02');
+    expect(range).toHaveLength(1);
+    expect(range[0].eventId).toBe('e2');
   });
 
   test('renders the audit log search controls and derives dynamic options', () => {
