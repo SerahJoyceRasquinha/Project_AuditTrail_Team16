@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatTemperature, formatTimestamp, stateLabel, truncateHash } from '../utils/format.js';
 
 /**
@@ -8,15 +9,31 @@ import { formatTemperature, formatTimestamp, stateLabel, truncateHash } from '..
  * would mislead an investigator (roadmap "Mistake 10").
  */
 export function ShipmentSummary({ shipment, mode = 'LIVE', at = null }) {
+  const [copied, setCopied] = useState(false);
+
   if (!shipment) return null;
   const historical = mode === 'HISTORICAL';
   const risk = shipment.riskScore ?? 0;
   const riskLevel = shipment.riskLevel ?? 'Low';
 
+  const copyShipmentId = async () => {
+    await navigator.clipboard.writeText(shipment.aggregateId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <div className="panel__body">
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <h1 className="summary__id">{shipment.aggregateId}</h1>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={copyShipmentId}
+          aria-label={`Copy shipment ID ${shipment.aggregateId}`}
+        >
+          {copied ? 'Copied' : 'Copy ID'}
+        </button>
         <span className={`pill ${historical ? 'pill--violet' : 'pill--teal'}`}>
           <span className="pill__dot" />
           {historical ? 'Historical state' : 'Current state'}
