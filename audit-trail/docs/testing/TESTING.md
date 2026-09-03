@@ -1,9 +1,12 @@
 # Testing
 
 ```bash
-cd backend  && npm test     # 115 tests
-cd frontend && npm test     #  34 tests
+cd backend  && npm test     # 283 tests
+cd frontend && npm test     # 141 tests
 ```
+
+All counts in this document were re-run against this build rather than carried
+forward from an earlier revision.
 
 Backend tests use Node's built-in test runner and `PERSISTENCE=memory`, so they
 need no MongoDB and no test framework dependency. Each test builds its own
@@ -12,13 +15,38 @@ rather than a parallel test-only arrangement that could quietly diverge.
 
 ## Backend suites
 
-| Suite | Covers |
-| --- | --- |
-| `tests/unit/` | Reducer, aggregate rules, validators — pure, no I/O |
-| `tests/database/` | Append behaviour, indexes, ordering, **the immutability audit** |
-| `tests/integration/` | Full lifecycle, projection, **the reconstruction check**, scrub boundaries |
-| `tests/concurrency/` | OCC, races, version-sequence integrity |
-| `tests/api/` | Real HTTP over an ephemeral port: status codes, headers, error envelopes |
+| Suite | Count | Covers |
+| --- | ---: | --- |
+| `tests/unit/` | 84 | Reducer, aggregate rules, validators, schedule policy — pure, no I/O |
+| `tests/integration/` | 139 | Full lifecycle, projection, **the reconstruction check**, scrub boundaries, scheduling, temperature monitoring, authentication |
+| `tests/api/` | 30 | Real HTTP over an ephemeral port: status codes, headers, error envelopes, middleware scope |
+| `tests/database/` | 22 | Append behaviour, indexes, ordering, **the immutability audit** |
+| `tests/concurrency/` | 8 | OCC, races, version-sequence integrity |
+| **Total** | **283** | |
+
+Per file:
+
+| File | Count |
+| --- | ---: |
+| `unit/schedulePolicy.test.js` | 38 |
+| `unit/commandValidators.test.js` | 18 |
+| `unit/shipmentAggregate.test.js` | 14 |
+| `unit/shipmentReducer.test.js` | 14 |
+| `integration/shipmentScheduling.test.js` | 33 |
+| `integration/authentication.test.js` | 22 |
+| `integration/temperatureMonitorLifecycle.test.js` | 18 |
+| `integration/temperatureMonitoring.test.js` | 18 |
+| `integration/shipmentManagement.test.js` | 17 |
+| `integration/eventLifecycle.test.js` | 13 |
+| `integration/reconstruction.test.js` | 12 |
+| `integration/demoAccounts.test.js` | 6 |
+| `api/shipmentApi.test.js` | 19 |
+| `api/export.test.js` | 4 |
+| `api/reconciliationScope.test.js` | 4 |
+| `api/rateLimitScope.test.js` | 3 |
+| `database/eventStore.test.js` | 11 |
+| `database/immutability.test.js` | 11 |
+| `concurrency/optimisticConcurrency.test.js` | 8 |
 
 ### The mid-project gate
 
@@ -51,10 +79,42 @@ asserts exactly one succeeds, nine receive `CONCURRENCY_CONFLICT`, and the store
 version sequence is `[1,2,3]` — gapless, no duplicates. A second test proves the
 remediation path the error advertises actually works.
 
+### Middleware scope
+
+Two API suites exist because middleware mounted on the command router is reached
+by *every* `/api` request — both routers mount on the same path, so a request
+only falls through to the query side when no command path matches. That makes
+"which requests does this middleware actually run for?" a question worth pinning
+with tests rather than reasoning about.
+
+**`api/rateLimitScope.test.js`** (3 tests). The command rate limit must throttle
+commands and nothing else: reads are never charged to it, commands still share
+one budget across every command endpoint, and reads keep working after that
+budget is exhausted — a throttled write surface must not blind the audit
+surface.
+
+**`api/reconciliationScope.test.js`** (4 tests). An unknown shipment is a 404 on
+the reconciliation endpoint exactly as on every other query, rather than a
+`consistent: true` green tick for a record that was never created. The internal
+`reconcileAll` sweep keeps the opposite behaviour — an identifier nobody used is
+not a read-model defect — and a test holds that distinction in place.
+
 ## Frontend suites
 
-Vitest + Testing Library + jsdom. 34 tests over the timeline, scrubber, chart,
-summary, banners, conflict dialog, status blocks and store reducer.
+Vitest + Testing Library + jsdom. 141 tests over the timeline, scrubber, chart,
+summary, banners, conflict dialog, status blocks, store reducer, the lifecycle
+planner, authentication, the role matrix and theming.
+
+| File | Count | Covers |
+| --- | ---: | --- |
+| `components.test.jsx` | 44 | Timeline, scrubber, chart, summary, banners, status blocks, store |
+| `shipmentLifecycle.test.jsx` | 42 | Lifecycle planner: plan, confirm, extend, overdue display |
+| `authentication.test.jsx` | 31 | Register/sign-in split, session restore, token handling |
+| `theme.test.jsx` | 14 | Light/Dark tokens shared by the app, charts and metrics dashboard |
+| `roleAccess.test.jsx` | 7 | Operator sees command affordances; User does not |
+| `loginPage.test.jsx` | 2 | Sign-in flow and redirect |
+| `exportAudit.test.js` | 1 | Export helper |
+| **Total** | **141** | |
 
 The tests that matter most are the ones asserting the current/historical
 distinction, since conflating them is the failure mode the whole project exists
@@ -67,7 +127,26 @@ to avoid:
 - the consistency banner explains lag without claiming failure
 
 **Expected noise.** Recharts logs a width/height warning under jsdom, which has
-no layout engine. It is cosmetic; the chart mounts and the assertions pass.
+no layout engine, and React Router logs v7 future-flag notices. Both are
+cosmetic; the components mount and the assertions pass.
+
+## End-to-end tests
+
+Browser-driven Playwright specs live in `e2e/`. They are **not** part of
+`npm test` — they need a browser binary and a running backend and frontend, so
+the default suites stay self-contained and offline. See `e2e/README.md`, or
+`docs/DEPLOYMENT.md` for the containerised way to stand the stack up.
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium
+npm test
+```
+
+`backend/scripts/verifyTemperatureFlow.js` remains the complementary check: it
+drives the monitoring lifecycle over real HTTP and spends real time waiting for
+an automatic reading, which is not something a fast suite should do.
 
 ## Manual verification
 

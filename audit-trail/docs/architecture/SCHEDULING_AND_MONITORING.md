@@ -320,13 +320,17 @@ Stated plainly, because a reviewer should not have to infer it:
 
 ## 10. Test coverage
 
+Counts below were re-run against this build, not carried forward from an earlier
+revision of this document.
+
 | Suite | Count |
 |---|---|
-| Backend total | 223 |
-| — schedule policy, duration, locations, normalisation (unit) | 32 |
+| Backend total | 283 |
+| — schedule policy, duration, locations, normalisation (unit) | 56 |
 | — scheduling, ID allocation, OCC, security (integration) | 33 |
-| — temperature monitoring and reporting (integration) | 18 |
-| Frontend total | 71 |
+| — temperature monitoring and reporting (integration) | 36 |
+| Frontend total | 141 |
+| — lifecycle planner and shipment page (`shipmentLifecycle.test.jsx`) | 42 |
 
 Notable cases: twenty concurrent creations yielding twenty distinct ids; a stale
 version rejected on stage confirmation; two simultaneous confirmations where

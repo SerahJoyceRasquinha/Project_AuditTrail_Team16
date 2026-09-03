@@ -27,22 +27,53 @@ where it is proved.
 | 20 | Recharts displays sensor information | `SensorChart` | `tests/components` |
 | 21 | Sensor data aligns with event timestamps | Same events, same epoch, `eventId` on each point | `tests/integration` sensor |
 | 22 | Loading/error/empty states work | `StatusBlocks` used by every panel | `tests/components` |
-| 23–29 | Unit / integration / API / database / worker / frontend tests pass | — | 115 backend + 34 frontend |
-| 30 | Documentation is complete | `docs/` | 8 documents |
+| 23–29 | Unit / integration / API / database / worker / frontend tests pass | — | 283 backend + 141 frontend |
+| 30 | Documentation is complete | `docs/` | 12 documents |
 | 31 | README allows a new developer to run the system | `README.md` | Two quick-start paths |
 
-## Not included
+### Beyond the original checklist
 
-**Playwright end-to-end tests.** Specified by the roadmap but omitted: they
-require a browser binary and a live MongoDB, which is outside what this
-deliverable can verify on its own. `docs/testing/TESTING.md` gives a manual
-sequence covering the same path, and the API suite already exercises every route
-over real HTTP.
+The roadmap's checklist stops at 31. The rows below cover work added since, so
+the table describes the build that exists rather than the one first specified.
 
-**Deployment configuration.** The roadmap marks this optional, as the source
-specifies no platform. Production readiness that *is* implemented: graceful
-shutdown, connection retry with backoff, health checks, structured logs with
-redaction, and an independently deployable worker.
+| # | Requirement | Implementation | Evidence |
+|---|---|---|---|
+| 32 | Server-allocated `SHP-N` references are race-free | `infrastructure/identity/shipmentIdAllocator.js` | 20 simultaneous creations → 20 distinct ids |
+| 33 | Country/state pairs the UI offers are pairs the validator accepts | `domain/shipment/reference/locations.js`, `GET /api/meta/locations` | `tests/unit/commandValidators` — bad pairs posted directly |
+| 34 | Lifecycle scheduling is event-sourced, not a stored status | `domain/shipment/schedule/schedulePolicy.js` | `tests/unit/schedulePolicy` (38), `tests/integration/shipmentScheduling` (33) |
+| 35 | Overdue status is derived, never stored | `deriveStageStatuses` | No `isOverdue` field exists anywhere |
+| 36 | Schedule extensions move only unconfirmed stages | `SHIPMENT_SCHEDULE_EXTENDED` | `tests/integration/shipmentScheduling` |
+| 37 | Automatic temperature monitoring issues commands, not writes | `application/services/temperatureMonitorService.js` | `tests/integration/temperatureMonitorLifecycle` (18) |
+| 38 | Monitoring survives a restart without duplicating readings | `resumeActiveShipments()`, slot derivation | Simulated restart + two racing monitors |
+| 39 | Reading provenance is immutable and surfaced | `source: SIMULATED / EXTERNAL / MANUAL` | Chart legend, timeline, PDF |
+| 40 | Real-time refresh does not violate CQRS | `infrastructure/realtime/shipmentEventBus.js`, `GET /api/stream/shipments` | Notifications carry no data; published post-commit |
+| 41 | Forensic PDF separates plans from facts | `application/queries/shipmentReport.js` | `tests/api/export` (4), incl. 300-reading pagination |
+| 42 | Authentication hashes passwords and never trusts the token's role | `application/services/authService.js` | `tests/integration/authentication` (22) |
+| 43 | Registration does not sign the new account in | `authService.register()`, `POST /api/auth/register` | `tests/integration/authentication`, `frontend/tests/authentication` |
+| 44 | Role enforcement is server-side, not a hidden button | `requireRole` per command route | `tests/integration/authentication`, `frontend/tests/roleAccess` (7) |
+| 45 | One theme system drives the app, the charts and the metrics dashboard | `frontend/src/hooks/useTheme.js` | `frontend/tests/theme.test.jsx` (14) |
+| 46 | Command rate limiting throttles commands only | `shipmentCommandRoutes.js` — per-route limiter | `tests/api/rateLimitScope` (3) |
+| 47 | An unknown shipment answers 404 on every query endpoint | `ReconcileShipmentQueryHandler` | `tests/api/reconciliationScope` (4) |
+| 48 | Deployment configuration exists | `Dockerfile`s, `docker-compose.yml`, `docs/DEPLOYMENT.md` | `docker compose up` brings up Mongo, API, worker, dashboard |
+| 49 | Browser-driven end-to-end tests exist | `e2e/` (Playwright) | Run separately from the unit suites — see `e2e/README.md` |
+
+## Previously not included — now built
+
+**Playwright end-to-end tests.** Previously scoped out. Now present in `e2e/`,
+and deliberately kept *out* of `npm test`: they need a browser binary and a
+running stack, and the default suites are worth keeping self-contained and
+offline. `docs/testing/TESTING.md` documents how to run them, and the manual
+click-through it describes remains valid for anyone who would rather not install
+a browser.
+
+**Deployment configuration.** Previously scoped out because the roadmap named no
+target platform. Now provided as containers, which commits to no vendor: a
+backend image, a static-build frontend image behind nginx, and a compose file
+wiring them to MongoDB with the projection worker as its own service — the
+independently deployable worker the architecture always allowed for, actually
+deployed independently. See `docs/DEPLOYMENT.md`. Production readiness that was
+already in place regardless: graceful shutdown, connection retry with backoff,
+health checks, and structured logs with redaction.
 
 ---
 
@@ -122,8 +153,20 @@ These were blocking verification and are unrelated to auth:
    (EventSource cannot set headers; it now passes the token as a query
    parameter, verified by the same code path).
 
-### Known issue, not introduced here
+### Known issue, since fixed
 
-The command router's rate limiter is mounted with `router.use`, so query
-requests falling through also consume the command budget. Pre-existing; left
-alone to keep this change focused.
+The command router's rate limiter was mounted with `router.use`, so query
+requests falling through to the query side also consumed the command budget —
+a read-only account, which cannot issue a single command, could be throttled out
+of the dashboard by a limit on commands. It is now attached per command route,
+mirroring what `requireRole` already did and for the same reason. One limiter
+instance is shared across the command routes, so the budget remains a limit on
+commanding rather than a separate allowance per endpoint. Pinned by
+`tests/api/rateLimitScope.test.js`.
+
+Fixed alongside it: `GET /api/shipment/:id/reconciliation` returned
+`200 {"consistent": true}` for a shipment that does not exist, while every other
+query endpoint returned 404 — a green integrity tick for a record that was never
+created. The service keeps that answer for the `reconcileAll` sweep, where it is
+correct; the 404 is now raised at the HTTP edge, where the caller's question is
+known. Pinned by `tests/api/reconciliationScope.test.js`.

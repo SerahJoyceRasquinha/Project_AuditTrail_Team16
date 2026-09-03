@@ -1,0 +1,87 @@
+# Audit Trail — full stack.
+#
+#   docker compose up --build      then open http://localhost:8080
+#
+# Four services, and the split is the point: the projection worker runs as its
+# own container from the same image as the API, so the claim that it is
+# independently deployable is demonstrated rather than asserted. Scale it,
+# restart it, or stop it entirely — the API keeps accepting commands, the read
+# model goes stale, and /api/meta/worker reports exactly how far behind it is.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: audit_trail
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "4001"
+      PERSISTENCE: mongo
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: audit_trail
+      # The dashboard is served same-origin through nginx, so this is only a
+      # fallback for anyone pointing a different origin at the API.
+      CORS_ORIGIN: http://localhost:8080
+      AUTH_ENABLED: "true"
+      # Set this. Without it a random secret is generated per boot and every
+      # session ends when the container restarts.
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?set AUTH_TOKEN_SECRET in a .env file next to this compose file}
+      # Demo accounts have published passwords. Never enable this on a host
+      # reachable from a network.
+      AUTH_SEED_DEMO_ACCOUNTS: "false"
+      # The worker runs as its own service below, so the API must not also run
+      # one in-process — two workers on one checkpoint is a race, not redundancy.
+      WORKER_ENABLED: "true"
+      WORKER_IN_PROCESS: "false"
+      SENSOR_SOURCE: simulated
+      SENSOR_MONITOR_ENABLED: "true"
+      REALTIME_ENABLED: "true"
+    ports:
+      - "4001:4001"
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: ["node", "src/worker.js"]
+    environment:
+      NODE_ENV: production
+      PERSISTENCE: mongo
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: audit_trail
+      WORKER_ENABLED: "true"
+      WORKER_IN_PROCESS: "true"
+      WORKER_NAME: shipment-projection-worker
+      # The monitor issues commands; it belongs with the API, not here. Two
+      # monitors sampling the same shipment is exactly what the in-flight guard
+      # exists to prevent, and there is no reason to test it in production.
+      SENSOR_MONITOR_ENABLED: "false"
+
+  dashboard:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  mongo-data:
