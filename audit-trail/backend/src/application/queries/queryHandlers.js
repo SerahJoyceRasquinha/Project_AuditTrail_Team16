@@ -247,7 +247,27 @@ export class ReconcileShipmentQueryHandler {
 
   async handle({ shipmentId }) {
     validateShipmentId(shipmentId);
-    return this.#reconciliationService.reconcileOne(shipmentId);
+    const result = await this.#reconciliationService.reconcileOne(shipmentId);
+
+    /**
+     * A shipment that does not exist is a 404 here, exactly as it is on every
+     * other query endpoint - not a 200 saying "consistent".
+     *
+     * `reconcileOne` is right to call an empty stream with no projection
+     * consistent: that is the honest answer for the `reconcileAll` sweep, which
+     * asks "does the read model disagree with the events anywhere?" and must
+     * not be tripped by an identifier nobody ever used. But that answer becomes
+     * a lie the moment it is served to someone who typed an identifier and is
+     * waiting to be told whether *their* shipment reconciles. Reported as a
+     * green tick, it is worse than an error: it is a confident wrong answer
+     * about the integrity of a record that was never created.
+     *
+     * So the distinction is drawn here, at the edge, where the caller's
+     * question is known - and the service keeps the semantics the sweep needs.
+     */
+    if (result.eventCount === 0) throw new AggregateNotFoundError(shipmentId);
+
+    return result;
   }
 }
 

@@ -33,6 +33,14 @@ export class ReconciliationService {
     if (events.length === 0) {
       return {
         aggregateId,
+        /**
+         * `eventCount` is reported so a caller can tell "consistent" from
+         * "there is nothing here". The sweep below legitimately treats an
+         * empty stream with no projection as consistent, but the HTTP handler
+         * must not: an auditor who mistypes an identifier has to be told the
+         * shipment does not exist, not shown a green tick for it.
+         */
+        eventCount: 0,
         consistent: projection === null,
         discrepancies: projection ? [{ field: '*', message: 'Projection exists for an empty event stream.' }] : [],
       };
@@ -46,6 +54,7 @@ export class ReconciliationService {
     if (!projection) {
       return {
         aggregateId,
+        eventCount: events.length,
         consistent: false,
         discrepancies: [{ field: '*', message: 'No projection exists for a non-empty event stream.' }],
         expectedVersion: expected.currentVersion,
@@ -66,6 +75,7 @@ export class ReconciliationService {
 
     return {
       aggregateId,
+      eventCount: events.length,
       consistent: discrepancies.length === 0,
       discrepancies,
       expectedVersion: expected.currentVersion,

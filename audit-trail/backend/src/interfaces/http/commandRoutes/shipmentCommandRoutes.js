@@ -38,23 +38,40 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
    * button in React is a courtesy to the user, not the control.
    */
   const operatorOnly = requireRole(...COMMAND_ROLES);
-  router.use(
-    rateLimiter({
-      enabled: config.rateLimit.enabled,
-      windowMs: config.rateLimit.windowMs,
-      maxRequests: config.rateLimit.maxRequests,
-      logger,
-    })
-  );
+
+  /**
+   * Rate limiting, attached per route for exactly the reason described above.
+   *
+   * This budget is meant for the command surface: appending events is the
+   * expensive, irreversible thing worth throttling. But `router.use` here would
+   * spend it on the query side as well, because - as noted above - every
+   * request entering `/api` passes through this router's middleware before
+   * falling through to the query router. Mounted at router level, a dashboard
+   * doing nothing but reading would exhaust the command budget and start
+   * receiving 429s on its own timeline, chart and metrics; a read-only account,
+   * which cannot issue a single command, would be throttled by a limit on
+   * commands. Neither is what the limit is for.
+   *
+   * One limiter instance is created and attached to each command route, so the
+   * budget stays shared across all commands - it is a limit on commanding, not
+   * a separate allowance per endpoint - while queries are never counted
+   * against it at all.
+   */
+  const limitCommands = rateLimiter({
+    enabled: config.rateLimit.enabled,
+    windowMs: config.rateLimit.windowMs,
+    maxRequests: config.rateLimit.maxRequests,
+    logger,
+  });
 
   /** POST /api/shipment/create -> CONTAINER_CREATED */
-  router.post('/shipment/create', operatorOnly, asyncHandler(controller.create));
+  router.post('/shipment/create', limitCommands, operatorOnly, asyncHandler(controller.create));
 
   /** POST /api/shipment/move -> LOADED_ON_SHIP | ARRIVED_AT_PORT | UNLOADED_FROM_SHIP */
-  router.post('/shipment/move', operatorOnly, asyncHandler(controller.move));
+  router.post('/shipment/move', limitCommands, operatorOnly, asyncHandler(controller.move));
 
   /** POST /api/shipment/temperature -> TEMPERATURE_RECORDED | TEMPERATURE_SPIKE */
-  router.post('/shipment/temperature', operatorOnly, asyncHandler(controller.recordTemperature));
+  router.post('/shipment/temperature', limitCommands, operatorOnly, asyncHandler(controller.recordTemperature));
 
   /**
    * Lifecycle management, added so the dashboard can own the whole shipment
@@ -67,13 +84,13 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
    */
 
   /** POST /api/shipment/amend -> SHIPMENT_DETAILS_AMENDED */
-  router.post('/shipment/amend', operatorOnly, asyncHandler(controller.amend));
+  router.post('/shipment/amend', limitCommands, operatorOnly, asyncHandler(controller.amend));
 
   /** POST /api/shipment/archive -> SHIPMENT_ARCHIVED */
-  router.post('/shipment/archive', operatorOnly, asyncHandler(controller.archive));
+  router.post('/shipment/archive', limitCommands, operatorOnly, asyncHandler(controller.archive));
 
   /** POST /api/shipment/restore -> SHIPMENT_RESTORED */
-  router.post('/shipment/restore', operatorOnly, asyncHandler(controller.restore));
+  router.post('/shipment/restore', limitCommands, operatorOnly, asyncHandler(controller.restore));
 
   /**
    * Scheduling.
@@ -88,13 +105,13 @@ export function createShipmentCommandRoutes({ controller, config, logger }) {
    */
 
   /** POST /api/shipment/schedule/plan -> SHIPMENT_SCHEDULE_PLANNED */
-  router.post('/shipment/schedule/plan', operatorOnly, asyncHandler(controller.planSchedule));
+  router.post('/shipment/schedule/plan', limitCommands, operatorOnly, asyncHandler(controller.planSchedule));
 
   /** POST /api/shipment/schedule/revise -> SHIPMENT_SCHEDULE_REVISED */
-  router.post('/shipment/schedule/revise', operatorOnly, asyncHandler(controller.reviseSchedule));
+  router.post('/shipment/schedule/revise', limitCommands, operatorOnly, asyncHandler(controller.reviseSchedule));
 
   /** POST /api/shipment/schedule/extend -> SHIPMENT_SCHEDULE_EXTENDED */
-  router.post('/shipment/schedule/extend', operatorOnly, asyncHandler(controller.extendSchedule));
+  router.post('/shipment/schedule/extend', limitCommands, operatorOnly, asyncHandler(controller.extendSchedule));
 
   return router;
 }
