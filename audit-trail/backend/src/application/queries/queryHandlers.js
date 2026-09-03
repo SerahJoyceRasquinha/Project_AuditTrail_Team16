@@ -10,6 +10,10 @@ import {
   planningWindow,
   summariseSchedule,
 } from '../../domain/shipment/schedule/schedulePolicy.js';
+import {
+  calculateShipmentRiskScore,
+  getRiskLevel,
+} from '../../domain/shipment/risk/riskScore.js';
 
 /**
  * Recomputes the schedule against the current instant.
@@ -24,6 +28,16 @@ import {
  * come from the same pure `summariseSchedule`, so the answer is consistent with
  * the PDF and the aggregate - it is only the value of "now" that differs.
  */
+function withRiskAssessment(shipment, integrityIssue = false) {
+  if (!shipment) return shipment;
+  const riskScore = calculateShipmentRiskScore(shipment, { integrityIssue });
+  return {
+    ...shipment,
+    riskScore,
+    riskLevel: getRiskLevel(riskScore),
+  };
+}
+
 function withLiveSchedule(shipment) {
   if (!shipment?.schedulePlanned || !shipment?.schedule?.plan) return shipment;
 
@@ -100,16 +114,17 @@ export class GetShipmentQueryHandler {
   async handle({ shipmentId }) {
     validateShipmentId(shipmentId);
 
-    const [projection, storeVersion] = await Promise.all([
+    const [projection, storeVersion, integrity] = await Promise.all([
       this.#readModel.findById(shipmentId),
       this.#eventStore.getCurrentVersion(shipmentId),
+      this.#eventStore.verifyChain(shipmentId),
     ]);
 
     if (storeVersion === 0) throw new AggregateNotFoundError(shipmentId);
 
     if (projection && projection.currentVersion === storeVersion) {
       return {
-        shipment: withLiveSchedule(projection),
+        shipment: withRiskAssessment(withLiveSchedule(projection), integrity?.intact === false),
         consistency: {
           source: 'read-model',
           projected: true,
@@ -135,7 +150,7 @@ export class GetShipmentQueryHandler {
     });
 
     return {
-      shipment: withLiveSchedule(replayed),
+      shipment: withRiskAssessment(withLiveSchedule(replayed), integrity?.intact === false),
       consistency: {
         source: 'event-store-replay',
         projected: false,
@@ -217,7 +232,7 @@ export class ListShipmentsQueryHandler {
     const result = await this.#readModel.list(filters);
     // The list is where an operator scans for trouble, so overdue-ness has to
     // be current here too - not as of whenever the worker last ran.
-    return { ...result, items: result.items.map(withLiveSchedule) };
+    return { ...result, items: result.items.map((shipment) => withRiskAssessment(withLiveSchedule(shipment))) };
   }
 }
 

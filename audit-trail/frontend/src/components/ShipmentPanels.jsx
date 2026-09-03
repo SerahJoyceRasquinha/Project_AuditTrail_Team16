@@ -10,6 +10,8 @@ import { formatTemperature, formatTimestamp, stateLabel, truncateHash } from '..
 export function ShipmentSummary({ shipment, mode = 'LIVE', at = null }) {
   if (!shipment) return null;
   const historical = mode === 'HISTORICAL';
+  const risk = shipment.riskScore ?? 0;
+  const riskLevel = shipment.riskLevel ?? 'Low';
 
   return (
     <div className="panel__body">
@@ -19,6 +21,7 @@ export function ShipmentSummary({ shipment, mode = 'LIVE', at = null }) {
           <span className="pill__dot" />
           {historical ? 'Historical state' : 'Current state'}
         </span>
+        <ShipmentRiskBadge score={risk} level={riskLevel} />
         {shipment.temperatureExcursion ? (
           <span className="pill pill--amber">
             <span className="pill__dot" />
@@ -43,6 +46,7 @@ export function ShipmentSummary({ shipment, mode = 'LIVE', at = null }) {
 
       <div className="facts">
         <Fact label="Status" value={stateLabel(shipment.currentState)} />
+        <Fact label="Risk score" value={`${risk} / ${riskLevel}`} />
         <Fact label="Location" value={shipment.currentLocation ?? '—'} />
         <Fact label="Version" value={`v${shipment.currentVersion ?? shipment.version ?? 0}`} mono />
         <Fact label="Vessel" value={shipment.vesselName ?? '—'} />
@@ -63,6 +67,16 @@ export function ShipmentSummary({ shipment, mode = 'LIVE', at = null }) {
         <Fact label="Last event" value={formatTimestamp(shipment.lastEventAt, { seconds: false })} />
       </div>
     </div>
+  );
+}
+
+export function ShipmentRiskBadge({ score, level }) {
+  const tone = level === 'High' ? 'pill--red' : level === 'Medium' ? 'pill--amber' : 'pill--teal';
+  return (
+    <span className={`pill ${tone}`}>
+      <span className="pill__dot" />
+      {level} Risk · {score}
+    </span>
   );
 }
 

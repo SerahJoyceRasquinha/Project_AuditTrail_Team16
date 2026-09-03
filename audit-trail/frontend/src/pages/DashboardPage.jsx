@@ -336,6 +336,9 @@ export function DashboardPage() {
                       {stateLabel(shipment.currentState)}
                     </span>
                     <span className="pill">v{shipment.currentVersion}</span>
+                    <span className={`pill ${shipment.riskLevel === 'High' ? 'pill--red' : shipment.riskLevel === 'Medium' ? 'pill--amber' : 'pill--teal'}`}>
+                      Risk {shipment.riskScore ?? 0}
+                    </span>
                     {shipment.archived ? <span className="pill pill--violet">Archived</span> : null}
                     {shipment.temperatureExcursion ? (
                       <span className="pill pill--amber">
