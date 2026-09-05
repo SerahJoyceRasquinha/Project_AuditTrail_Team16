@@ -126,6 +126,13 @@ export const getWorkerStatus = (signal) => request('/api/meta/worker', { signal 
 
 export const getDashboardMetrics = (signal) => request('/api/meta/dashboard-metrics', { signal });
 
+/**
+ * What every dashboard figure means. Served from the same module the exported
+ * report is built from, so the tooltip on screen and the paragraph in the PDF
+ * cannot drift apart.
+ */
+export const getMetricDefinitions = (signal) => request('/api/meta/metric-definitions', { signal });
+
 export const getEventCatalog = (signal) => request('/api/meta/event-catalog', { signal });
 
 /**
@@ -222,26 +229,33 @@ export const reviseSchedule = (command) =>
 export const extendSchedule = (command) =>
   request('/api/shipment/schedule/extend', { method: 'POST', body: command });
 
-export const exportShipment = async (shipmentId, format, signal) => {
-  const url = `${BASE_URL}/api/shipment/${encodeURIComponent(shipmentId)}/export?format=${encodeURIComponent(format)}`;
-  /**
-   * This call builds its own fetch rather than going through `request`,
-   * because it needs the raw blob rather than parsed JSON. That means the
-   * Authorization header has to be attached explicitly - forgetting it is why
-   * exports started failing the moment the query side required a session.
-   */
+/**
+ * Downloads a binary/document response and saves it to disk.
+ *
+ * Shared by every export, because the awkward parts are identical each time and
+ * were previously going to be copied per endpoint: these calls build their own
+ * fetch rather than going through `request`, since they need the raw blob
+ * rather than parsed JSON - which means the Authorization header has to be
+ * attached explicitly. Forgetting it is why exports started failing the moment
+ * the query side required a session, and having one copy of this is what stops
+ * that being rediscovered once per export button.
+ *
+ * The server names the file via Content-Disposition; `fallbackFilename` is only
+ * used if that header is missing.
+ */
+const downloadFromApi = async (url, fallbackFilename, signal) => {
   const token = readToken();
   const response = await fetch(url, {
     signal,
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
+
   if (!response.ok) {
     let envelope = {};
     try {
-      const text = await response.text();
-      envelope = JSON.parse(text).error || {};
+      envelope = JSON.parse(await response.text()).error || {};
     } catch {
-      // Ignored
+      // A non-JSON error body tells us nothing extra; the status still does.
     }
     throw new ApiError(envelope.message ?? `Request failed with status ${response.status}.`, {
       status: response.status,
@@ -256,12 +270,10 @@ export const exportShipment = async (shipmentId, format, signal) => {
   a.style.display = 'none';
   a.href = downloadUrl;
 
-  // Extract filename from header if possible, else fallback
   const disposition = response.headers.get('content-disposition');
-  let filename = `${shipmentId}-audit-report.${format}`;
+  let filename = fallbackFilename;
   if (disposition && disposition.indexOf('filename=') !== -1) {
-    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-    const matches = filenameRegex.exec(disposition);
+    const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
     if (matches != null && matches[1]) {
       filename = matches[1].replace(/['"]/g, '');
     }
@@ -274,3 +286,21 @@ export const exportShipment = async (shipmentId, format, signal) => {
   window.URL.revokeObjectURL(downloadUrl);
   a.remove();
 };
+
+export const exportShipment = (shipmentId, format, signal) =>
+  downloadFromApi(
+    `${BASE_URL}/api/shipment/${encodeURIComponent(shipmentId)}/export?format=${encodeURIComponent(format)}`,
+    `${shipmentId}-audit-report.${format}`,
+    signal
+  );
+
+/**
+ * The dashboard as a document: the same figures the screen shows, with every
+ * metric's definition printed beside it and the charts redrawn server-side.
+ */
+export const exportDashboardMetrics = (format, signal) =>
+  downloadFromApi(
+    `${BASE_URL}/api/meta/dashboard-metrics/export?format=${encodeURIComponent(format)}`,
+    `shipment-dashboard.${format}`,
+    signal
+  );

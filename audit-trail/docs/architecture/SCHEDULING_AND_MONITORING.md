@@ -325,11 +325,11 @@ revision of this document.
 
 | Suite | Count |
 |---|---|
-| Backend total | 283 |
+| Backend total | 307 |
 | — schedule policy, duration, locations, normalisation (unit) | 56 |
 | — scheduling, ID allocation, OCC, security (integration) | 33 |
 | — temperature monitoring and reporting (integration) | 36 |
-| Frontend total | 141 |
+| Frontend total | 159 |
 | — lifecycle planner and shipment page (`shipmentLifecycle.test.jsx`) | 42 |
 
 Notable cases: twenty concurrent creations yielding twenty distinct ids; a stale

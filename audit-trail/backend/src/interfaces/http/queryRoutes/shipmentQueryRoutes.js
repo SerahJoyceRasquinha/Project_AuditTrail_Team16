@@ -19,6 +19,13 @@ export function createShipmentQueryRoutes({ controller }) {
   /** GET /api/meta/dashboard-metrics - KPI dashboard data */
   router.get('/meta/dashboard-metrics', asyncHandler(controller.getDashboardMetrics));
 
+  /**
+   * The dashboard as a document. Registered before nothing in particular, but
+   * note it sits on the query router: an export reads, it never writes, so it
+   * needs a session like any other query and no role beyond that.
+   */
+  router.get('/meta/dashboard-metrics/export', asyncHandler(controller.exportDashboardMetrics));
+
   /** GET /api/shipments - dashboard list (design decision) */
   router.get('/shipments', asyncHandler(controller.listShipments));
 

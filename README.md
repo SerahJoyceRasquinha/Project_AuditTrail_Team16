@@ -98,10 +98,10 @@ npm run dev
 
 ```powershell
 cd backend
-npm test          # 283 tests, no MongoDB needed
+npm test          # 307 tests, no MongoDB needed
 
 cd ..\frontend
-npm test          # 141 tests
+npm test          # 159 tests
 ```
 
 The Recharts width/height warning during frontend tests is expected — jsdom has

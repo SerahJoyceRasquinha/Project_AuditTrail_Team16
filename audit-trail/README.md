@@ -123,8 +123,8 @@ storage layer:
 ## Tests
 
 ```bash
-cd backend  && npm test    # 283 tests — no MongoDB needed
-cd frontend && npm test    # 141 tests
+cd backend  && npm test    # 307 tests — no MongoDB needed
+cd frontend && npm test    # 159 tests
 ```
 
 Backend tests use Node's built-in runner against in-memory persistence, through

@@ -27,7 +27,7 @@ where it is proved.
 | 20 | Recharts displays sensor information | `SensorChart` | `tests/components` |
 | 21 | Sensor data aligns with event timestamps | Same events, same epoch, `eventId` on each point | `tests/integration` sensor |
 | 22 | Loading/error/empty states work | `StatusBlocks` used by every panel | `tests/components` |
-| 23–29 | Unit / integration / API / database / worker / frontend tests pass | — | 283 backend + 141 frontend |
+| 23–29 | Unit / integration / API / database / worker / frontend tests pass | — | 307 backend + 159 frontend |
 | 30 | Documentation is complete | `docs/` | 12 documents |
 | 31 | README allows a new developer to run the system | `README.md` | Two quick-start paths |
 

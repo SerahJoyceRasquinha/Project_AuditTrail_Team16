@@ -14,6 +14,11 @@ import {
   TEMPERATURE_POLICY,
 } from '../domain/shipment/events/eventTypes.js';
 import { locationCatalogue } from '../domain/shipment/reference/locations.js';
+import {
+  METRIC_DEFINITIONS,
+  CHART_DEFINITIONS,
+  METRICS_BASIS,
+} from '../application/queries/metricDefinitions.js';
 
 /**
  * Route composition.
@@ -127,6 +132,26 @@ export function registerRoutes({ app, container }) {
   api.get('/meta/locations', (req, res) => {
     res.set('Cache-Control', 'public, max-age=86400');
     res.json(locationCatalogue());
+  });
+
+  /**
+   * GET /api/meta/metric-definitions
+   *
+   * What every dashboard number means, in plain English and in technical terms.
+   *
+   * Served from the same module the exported PDF and CSV are built from, for
+   * the same reason the event catalog is served from the reducer's constants: a
+   * definition that lives in two places is a definition that will disagree with
+   * itself. The tooltip on the card and the paragraph in the report are now the
+   * same sentence by construction.
+   *
+   * Cached for an hour - these change when someone edits the source, not on any
+   * schedule - and kept off the metrics payload itself so the dashboard's
+   * 30-second poll stays small.
+   */
+  api.get('/meta/metric-definitions', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json({ basis: METRICS_BASIS, metrics: METRIC_DEFINITIONS, charts: CHART_DEFINITIONS });
   });
 
   /** GET /api/meta/sensors - what the temperature monitor is doing, and where its data comes from. */

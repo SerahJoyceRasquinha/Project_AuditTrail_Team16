@@ -31,7 +31,6 @@ import { ShipmentFormDialog } from '../components/ShipmentFormDialog.jsx';
 import { ErrorBlock, LoadingBlock } from '../components/StatusBlocks.jsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 import { formatTimestamp } from '../utils/format.js';
-import { downloadAuditHistory } from '../utils/exportAudit.js';
 
 export function ShipmentPage() {
   const { id } = useParams();
@@ -440,15 +439,22 @@ function ShipmentWorkspace({ shipmentId }) {
               <h2 className="panel__title">Immutable event history</h2>
               <span className="pill pill--teal">New</span>
               <span className="spacer" />
+              {/*
+                Two buttons, both server-rendered.
+
+                There were four here. The other two exported from the browser's
+                copy of the *filtered* events, which meant a file whose contents
+                depended on whatever was typed in the search box - two people
+                could export "the audit history" of the same shipment on the
+                same day and get different files, with nothing in either one
+                saying so. For a ledger whose whole purpose is being the record,
+                that is the wrong artefact to hand someone.
+
+                These two ask the backend for the complete history, including
+                the hash chain, so an export is the same evidence regardless of
+                what the screen was showing when the button was pressed.
+              */}
               <div className="export-actions">
-                <button
-                  type="button"
-                  className="btn btn--sm btn--ghost"
-                  onClick={() => exportHistory('csv')}
-                  disabled={Boolean(exportingFormat)}
-                >
-                  {exportingFormat === 'csv' ? 'Preparing CSV…' : 'Export CSV'}
-                </button>
                 <button
                   type="button"
                   className="btn btn--sm btn--ghost"
@@ -457,26 +463,16 @@ function ShipmentWorkspace({ shipmentId }) {
                 >
                   {exportingFormat === 'pdf' ? 'Preparing PDF…' : 'Export PDF'}
                 </button>
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => exportHistory('csv')}
+                  disabled={Boolean(exportingFormat)}
+                >
+                  {exportingFormat === 'csv' ? 'Preparing CSV…' : 'Export CSV'}
+                </button>
                 <span className="eyebrow mono">{events.length} events · full history</span>
               </div>
-            </div>
-            <div className="export-actions">
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() => downloadAuditHistory(shipmentId, filteredEvents, 'json')}
-                disabled={filteredEvents.length === 0}
-              >
-                Export JSON
-              </button>
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() => downloadAuditHistory(shipmentId, filteredEvents, 'csv')}
-                disabled={filteredEvents.length === 0}
-              >
-                Export CSV
-              </button>
             </div>
             <AuditLogToolbar
               events={events}

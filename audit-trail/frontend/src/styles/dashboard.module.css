@@ -262,3 +262,87 @@
   opacity: 0.7;
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------------------------
+ * Metric explanations and export actions.
+ *
+ * Every figure on this dashboard now carries its own definition, in two
+ * registers: a plain-English line anyone can read, and a technical line naming
+ * the projection field and the arithmetic. They are rendered inline rather than
+ * hidden behind a hover tooltip because the people who most need them - someone
+ * reading the board in a meeting, or auditing a number they did not compute -
+ * are exactly the people who will not think to hover, and because a tooltip is
+ * unreachable on a touchscreen and invisible when the page is printed.
+ * ------------------------------------------------------------------------- */
+
+.exportBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.exportHint {
+  font-size: 12px;
+  color: var(--muted, #5b6b7a);
+}
+
+.explain {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border, #d7dee5);
+}
+
+.explainRow + .explainRow {
+  margin-top: 6px;
+}
+
+.explainLabel {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #5b6b7a);
+}
+
+.explainText {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text, #12212e);
+}
+
+.explainFormula {
+  display: block;
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted, #5b6b7a);
+  word-break: break-word;
+}
+
+/* The basis note: one statement that governs every figure below it. */
+.basis {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--panel, #f2f6f9);
+  border: 1px solid var(--border, #d7dee5);
+}
+
+.basisItem {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text, #12212e);
+}
+
+.basisItem + .basisItem {
+  margin-top: 4px;
+}
+
+.basisItem strong {
+  color: var(--muted, #5b6b7a);
+}

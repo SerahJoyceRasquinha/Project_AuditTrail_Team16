@@ -37,6 +37,7 @@ import {
   DashboardMetricsQueryHandler,
 } from '../application/queries/queryHandlers.js';
 import { ExportShipmentHistoryQueryHandler } from '../application/queries/exportShipmentHistory.js';
+import { ExportDashboardMetricsQueryHandler } from '../application/queries/exportDashboardMetrics.js';
 
 import { ShipmentCommandController } from '../interfaces/http/controllers/shipmentCommandController.js';
 import { ShipmentQueryController } from '../interfaces/http/controllers/shipmentQueryController.js';
@@ -139,6 +140,14 @@ export function buildContainer({ db, config, logger }) {
   const getShipmentScheduleQueryHandler = new GetShipmentScheduleQueryHandler({ eventStore });
   const exportShipmentHistoryQueryHandler = new ExportShipmentHistoryQueryHandler({ replayService, eventStore });
   const dashboardMetricsQueryHandler = new DashboardMetricsQueryHandler({ readModelRepository });
+  /**
+   * The dashboard export reuses the metrics handler rather than re-querying the
+   * read model itself, so an exported figure is by construction the same figure
+   * the screen shows - there is only one place the arithmetic happens.
+   */
+  const exportDashboardMetricsQueryHandler = new ExportDashboardMetricsQueryHandler({
+    dashboardMetricsQueryHandler,
+  });
 
   // --- Controllers ----------------------------------------------------------
   const shipmentCommandController = new ShipmentCommandController({
@@ -164,6 +173,7 @@ export function buildContainer({ db, config, logger }) {
     getShipmentScheduleQueryHandler,
     exportShipmentHistoryQueryHandler,
     dashboardMetricsQueryHandler,
+    exportDashboardMetricsQueryHandler,
     // The SSE endpoint needs the bus and the heartbeat interval. Passed as a
     // named bundle rather than smuggled in as a handler, because it is not one.
     realtime: { eventBus, config, logger },
@@ -221,6 +231,7 @@ export function buildContainer({ db, config, logger }) {
       getShipmentScheduleQueryHandler,
       exportShipmentHistoryQueryHandler,
       dashboardMetricsQueryHandler,
+      exportDashboardMetricsQueryHandler,
     },
     shipmentCommandController,
     shipmentQueryController,

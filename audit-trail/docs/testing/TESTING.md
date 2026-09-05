@@ -1,8 +1,8 @@
 # Testing
 
 ```bash
-cd backend  && npm test     # 283 tests
-cd frontend && npm test     # 141 tests
+cd backend  && npm test     # 307 tests
+cd frontend && npm test     # 159 tests
 ```
 
 All counts in this document were re-run against this build rather than carried
@@ -17,12 +17,12 @@ rather than a parallel test-only arrangement that could quietly diverge.
 
 | Suite | Count | Covers |
 | --- | ---: | --- |
-| `tests/unit/` | 84 | Reducer, aggregate rules, validators, schedule policy — pure, no I/O |
-| `tests/integration/` | 139 | Full lifecycle, projection, **the reconstruction check**, scrub boundaries, scheduling, temperature monitoring, authentication |
-| `tests/api/` | 30 | Real HTTP over an ephemeral port: status codes, headers, error envelopes, middleware scope |
+| `tests/unit/` | 87 | Reducer, aggregate rules, validators, schedule policy — pure, no I/O |
+| `tests/integration/` | 148 | Full lifecycle, projection, **the reconstruction check**, scrub boundaries, scheduling, temperature monitoring, authentication |
+| `tests/api/` | 42 | Real HTTP over an ephemeral port: status codes, headers, error envelopes, middleware scope |
 | `tests/database/` | 22 | Append behaviour, indexes, ordering, **the immutability audit** |
 | `tests/concurrency/` | 8 | OCC, races, version-sequence integrity |
-| **Total** | **283** | |
+| **Total** | **307** | |
 
 Per file:
 
@@ -101,7 +101,7 @@ not a read-model defect — and a test holds that distinction in place.
 
 ## Frontend suites
 
-Vitest + Testing Library + jsdom. 141 tests over the timeline, scrubber, chart,
+Vitest + Testing Library + jsdom. 159 tests over the timeline, scrubber, chart,
 summary, banners, conflict dialog, status blocks, store reducer, the lifecycle
 planner, authentication, the role matrix and theming.
 
@@ -110,11 +110,11 @@ planner, authentication, the role matrix and theming.
 | `components.test.jsx` | 44 | Timeline, scrubber, chart, summary, banners, status blocks, store |
 | `shipmentLifecycle.test.jsx` | 42 | Lifecycle planner: plan, confirm, extend, overdue display |
 | `authentication.test.jsx` | 31 | Register/sign-in split, session restore, token handling |
+| `statusDashboard.test.jsx` | 19 | Metric explanations, export buttons, lifecycle-chart data |
 | `theme.test.jsx` | 14 | Light/Dark tokens shared by the app, charts and metrics dashboard |
 | `roleAccess.test.jsx` | 7 | Operator sees command affordances; User does not |
 | `loginPage.test.jsx` | 2 | Sign-in flow and redirect |
-| `exportAudit.test.js` | 1 | Export helper |
-| **Total** | **141** | |
+| **Total** | **159** | |
 
 The tests that matter most are the ones asserting the current/historical
 distinction, since conflating them is the failure mode the whole project exists

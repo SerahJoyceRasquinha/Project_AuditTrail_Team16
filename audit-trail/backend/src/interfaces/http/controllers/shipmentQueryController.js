@@ -151,4 +151,18 @@ export class ShipmentQueryController {
     const result = await this.#handlers.dashboardMetricsQueryHandler.handle();
     res.status(200).json(result);
   };
+
+  /**
+   * GET /api/meta/dashboard-metrics/export - the same figures as a document.
+   *
+   * Streams straight to the response like the shipment audit export, because a
+   * PDF is built incrementally and buffering the whole thing first would gain
+   * nothing.
+   */
+  exportDashboardMetrics = async (req, res) => {
+    await this.#handlers.exportDashboardMetricsQueryHandler.handle({
+      format: req.query.format || 'pdf',
+      res,
+    });
+  };
 }

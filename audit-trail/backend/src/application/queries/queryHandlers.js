@@ -14,6 +14,7 @@ import {
   calculateShipmentRiskScore,
   getRiskLevel,
 } from '../../domain/shipment/risk/riskScore.js';
+import { SHIPMENT_STATES } from '../../domain/shipment/events/eventTypes.js';
 
 /**
  * Recomputes the schedule against the current instant.
@@ -403,20 +404,78 @@ export class DashboardMetricsQueryHandler {
     this.#readModel = readModelRepository;
   }
 
+  /**
+   * Reads the whole read model, one page at a time.
+   *
+   * The previous version asked for `pageSize: 10000` in a single call and
+   * assumed it got everything. It did not: `list()` clamps pageSize to
+   * `limits.maxShipmentsPerPage` (100 by default), so every metric below was
+   * silently computed over the 100 most recently touched shipments while
+   * `totalShipments` reported that truncated count as though it were the whole
+   * fleet. With 111 shipments the dashboard confidently reported 100.
+   *
+   * Paging fixes that without raising the per-request limit, which exists to
+   * stop a single HTTP query pulling an unbounded result set. The page size is
+   * read back from the response rather than assumed, so this keeps working if
+   * the limit is ever reconfigured.
+   */
+  async #readAll(view) {
+    const items = [];
+    let page = 1;
+
+    for (;;) {
+      const result = await this.#readModel.list({ page, pageSize: Number.MAX_SAFE_INTEGER, view });
+      items.push(...result.items);
+
+      // An empty page means we have run off the end; the total means we are
+      // done. Both are checked because the collection can change underneath a
+      // multi-page read.
+      if (result.items.length === 0 || items.length >= result.pagination.total) break;
+      if (page >= result.pagination.totalPages) break;
+      page += 1;
+    }
+
+    return items;
+  }
+
   async handle() {
-    // Fetch all shipments without pagination to aggregate metrics
-    const result = await this.#readModel.list({ pageSize: 10000, view: 'active' });
-    const allShipments = result.items;
+    /**
+     * Every shipment, archived included.
+     *
+     * This used to fetch `view: 'active'`, which excludes archived shipments -
+     * so archiving one made the headline "Total Shipments" figure go *down*,
+     * and `activeShipments` was computed by filtering an already-filtered list
+     * and could therefore never differ from it. Reading everything and
+     * partitioning here gives the two numbers separate meanings: a true total
+     * that only ever grows, and a live count that archiving actually moves.
+     *
+     * Breach, compliance and delivery figures are computed over the same full
+     * set. Archiving is a filing decision, not a retraction - a temperature
+     * excursion that happened still happened, and a forensic dashboard that
+     * quietly forgets it would be lying by omission.
+     */
+    const allShipments = await this.#readAll('all');
+
+    /**
+     * One bucket per state in the domain enum, not a hand-written subset.
+     *
+     * The previous literal listed only CREATED, IN_TRANSIT and AT_PORT, and the
+     * counting loop skipped any state it did not already have a key for. UNLOADED
+     * is a real state, so every delivered shipment was counted in the total and
+     * then dropped from the breakdown: one delivered shipment produced
+     * `totalShipments: 1` with a byState that summed to zero, and the pie chart
+     * on the dashboard emptied out. Deriving the keys from SHIPMENT_STATES means
+     * the breakdown cannot fall behind the domain again - a state added there
+     * gets a bucket here for free.
+     */
+    const byState = Object.fromEntries(Object.values(SHIPMENT_STATES).map((state) => [state, 0]));
 
     // Initialize metrics
     const metrics = {
       totalShipments: allShipments.length,
-      activeShipments: allShipments.filter(s => !s.archived).length,
-      byState: {
-        CREATED: 0,
-        IN_TRANSIT: 0,
-        AT_PORT: 0,
-      },
+      activeShipments: allShipments.filter((s) => !s.archived).length,
+      archivedShipments: allShipments.filter((s) => s.archived).length,
+      byState,
       withBreaches: 0,
       totalBreaches: 0,
       avgBreachesPerShipment: 0,
