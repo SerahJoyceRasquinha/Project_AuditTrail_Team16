@@ -85,7 +85,19 @@ test('an unknown event type can be tolerated explicitly when strict mode is off'
 test('out-of-order events are rejected instead of producing a plausible wrong answer', () => {
   assert.throws(
     () => replay([CREATED, ARRIVED, LOADED]),
-    (error) => error instanceof ValidationError && /ascending version order/i.test(error.message)
+    (error) => error instanceof ValidationError && /contiguous version sequence/i.test(error.message)
+  );
+});
+
+/**
+ * A gap is not the same failure as bad ordering, and it used to slip through:
+ * ascending-only validation accepted [1, 2, 4] and returned a confident state
+ * that silently omitted whatever event 3 recorded.
+ */
+test('a gap in the version sequence is rejected rather than folded over', () => {
+  assert.throws(
+    () => replay([CREATED, LOADED, ARRIVED]),
+    (error) => error instanceof ValidationError && /contiguous version sequence/i.test(error.message)
   );
 });
 

@@ -1,5 +1,9 @@
 import { ShipmentAggregate } from '../../domain/shipment/aggregate/shipmentAggregate.js';
-import { ConcurrencyConflictError, ValidationError } from '../../shared/errors/AppError.js';
+import {
+  AggregateNotFoundError,
+  ConcurrencyConflictError,
+  ValidationError,
+} from '../../shared/errors/AppError.js';
 import { newId, nowIso } from '../../shared/utils/index.js';
 
 /**
@@ -47,6 +51,22 @@ export class ShipmentCommandService {
     const { aggregate } = await this.#load(shipmentId);
     const currentVersion = aggregate.version;
 
+    /**
+     * Existence is checked BEFORE the OCC pre-check.
+     *
+     * Order matters here. `expectedVersion` is validated as >= 1, so a command
+     * aimed at a shipment that does not exist can never match the stored
+     * version of 0. Running OCC first therefore reported every unknown
+     * shipment as a concurrency conflict, telling the operator to reload and
+     * retry something that was never there. "No such shipment" and "someone
+     * else got there first" are different problems and must not share an
+     * error.
+     */
+    if (requireExisting && !aggregate.exists) {
+      log.warn('Command rejected: no such aggregate.');
+      throw new AggregateNotFoundError(shipmentId);
+    }
+
     // OCC pre-check (roadmap 13.1). The authoritative check happens again
     // inside the Event Store against the unique index; this one exists to give
     // a precise, actionable error in the ordinary case.
@@ -57,10 +77,6 @@ export class ShipmentCommandService {
         conflict: true,
       });
       throw new ConcurrencyConflictError({ aggregateId: shipmentId, expectedVersion, currentVersion });
-    }
-
-    if (requireExisting && !aggregate.exists) {
-      log.warn('Command rejected: no such aggregate.');
     }
 
     /**
@@ -79,7 +95,20 @@ export class ShipmentCommandService {
     const timestamp = command?.occurredAt ?? nowIso();
     const previousAt = aggregate.state.lastEventAt;
 
-    if (command?.occurredAt && previousAt && Date.parse(timestamp) < Date.parse(previousAt)) {
+    /**
+     * Chronology is checked on EVERY append, not only when the client supplied
+     * `occurredAt`.
+     *
+     * Gating this on `command?.occurredAt` left a hole: once any event carried
+     * a timestamp ahead of the wall clock, every later command that omitted
+     * `occurredAt` defaulted to `now` and landed *behind* its own predecessor.
+     * The stream stayed ascending by version while going backwards in time,
+     * which is worse than either failure alone: `getEventsUntil` filters by
+     * timestamp, so a reconstruction could fold a set that was not a prefix of
+     * the stream and produce a state that never existed. The hash chain does
+     * not catch it, because it links versions rather than instants.
+     */
+    if (previousAt && Date.parse(timestamp) < Date.parse(previousAt)) {
       throw new ValidationError(
         `'occurredAt' (${timestamp}) is earlier than the previous event on this shipment (${previousAt}). Events cannot be inserted into the past.`,
         { field: 'occurredAt', occurredAt: timestamp, previousEventAt: previousAt }

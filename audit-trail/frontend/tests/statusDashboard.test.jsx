@@ -27,6 +27,10 @@ vi.mock('../src/services/apiClient.js', () => ({
   getDashboardMetrics: (...args) => getDashboardMetrics(...args),
   getMetricDefinitions: (...args) => getMetricDefinitions(...args),
   exportDashboardMetrics: (...args) => exportDashboardMetrics(...args),
+  // The dashboard subscribes to the notification stream for live refresh, and
+  // that hook reads the session token from here. jsdom has no EventSource so
+  // the subscription never opens, but the module still has to resolve.
+  readToken: () => 'test-token',
 }));
 
 import { StatusDashboard, buildStateChartData } from '../src/components/StatusDashboard.jsx';
@@ -44,6 +48,9 @@ const METRICS = {
   averageDeliveryTime: 12.5,
   onTimeDeliveryRate: 75,
   overallTemperatureCompliance: 75,
+  totalTemperatureReadings: 20,
+  breachReadings: 2,
+  readingTemperatureCompliance: 90,
   generatedAt: '2026-09-05T10:00:00.000Z',
 };
 
@@ -292,5 +299,77 @@ describe('the archived count is visible', () => {
 
     await screen.findByText('Archived Shipments');
     expect(METRICS.activeShipments + METRICS.archivedShipments).toBe(METRICS.totalShipments);
+  });
+});
+
+/**
+ * Temperature compliance is a reading-level figure.
+ *
+ * The pie used to be drawn from `overallTemperatureCompliance`, which counts
+ * shipments. With one shipment that breached once in five readings it rendered
+ * "Breaches: 100%" beside a shipment page reading "5 readings, 1 breach". These
+ * tests pin the chart to the reading-level number and pin the distinction
+ * between "no data" and "zero".
+ */
+describe('temperature compliance reporting', () => {
+  test('the compliance card shows reading-level compliance', async () => {
+    await renderDashboard();
+    const card = screen.getByText('Reading Compliance').closest('div').parentElement;
+    expect(within(card).getByText('90%')).toBeTruthy();
+  });
+
+  test('the shipment-level figure is still reported, under its own name', async () => {
+    await renderDashboard();
+    const card = screen.getByText('Shipments Fully Compliant').closest('div').parentElement;
+    expect(within(card).getByText('75%')).toBeTruthy();
+  });
+
+  test('the raw counts behind the percentage are shown', async () => {
+    await renderDashboard();
+    expect(screen.getByText(/20 readings · 2 outside range/)).toBeTruthy();
+  });
+
+  test('with no readings the chart is suppressed rather than drawn as 0%', async () => {
+    getDashboardMetrics.mockResolvedValue({
+      ...METRICS,
+      totalTemperatureReadings: 0,
+      breachReadings: 0,
+      readingTemperatureCompliance: null,
+    });
+    await renderDashboard();
+    expect(screen.getByText(/not the same as 0% compliant/i)).toBeTruthy();
+  });
+
+  test('an unmeasured rate reads as a dash, not as zero', async () => {
+    getDashboardMetrics.mockResolvedValue({
+      ...METRICS,
+      readingTemperatureCompliance: null,
+      totalTemperatureReadings: 0,
+      onTimeDeliveryRate: null,
+      averageDeliveryTime: null,
+    });
+    await renderDashboard();
+    const onTime = screen.getByText('On-Time Delivery Rate').closest('div').parentElement;
+    expect(within(onTime).getByText('—')).toBeTruthy();
+    const delivery = screen.getByText('Avg Delivery Time').closest('div').parentElement;
+    expect(within(delivery).getByText('—')).toBeTruthy();
+  });
+});
+
+/**
+ * Empty lifecycle buckets are kept in the data - a state with no shipments must
+ * not vanish - but they are not given a slice label, because Recharts places
+ * one per slice and several zero-width slices overprint each other into an
+ * unreadable smear.
+ */
+describe('the lifecycle pie with empty states', () => {
+  test('every state is still listed as text, including the empty one', async () => {
+    await renderDashboard();
+    expect(screen.getByText(/Created: 1 · In Transit: 1 · At Port: 0 · Unloaded: 2/)).toBeTruthy();
+  });
+
+  test('buildStateChartData still returns every bucket', () => {
+    const slices = buildStateChartData(METRICS.byState, { info: '#1', warning: '#2', success: '#3', primary: '#4', purple: '#5' });
+    expect(slices.map((s) => s.name)).toEqual(['Created', 'In Transit', 'At Port', 'Unloaded']);
   });
 });

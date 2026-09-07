@@ -72,7 +72,16 @@ export function SensorChart({
 
   const { minTemperatureC, maxTemperatureC } = series.range ?? {};
   const hasRange = minTemperatureC !== null && minTemperatureC !== undefined;
-  const simulated = data.some((point) => point.source === 'SIMULATED');
+  /**
+   * Provenance has to be exact now that readings can be entered by hand.
+   *
+   * Saying 'readings are simulated' when only some of them are would label an
+   * operator's own measurement as invented, which is the one mistake this
+   * caption exists to prevent.
+   */
+  const simulatedCount = data.filter((point) => point.source === 'SIMULATED').length;
+  const allSimulated = data.length > 0 && simulatedCount === data.length;
+  const someSimulated = simulatedCount > 0 && !allSimulated;
 
   const temperatures = data.map((point) => point.temperatureC);
   const lowest = Math.min(...temperatures, hasRange ? minTemperatureC : Infinity);
@@ -199,9 +208,13 @@ export function SensorChart({
         {/* Provenance sits in the legend, not only in a tooltip: a reader
             glancing at the chart must not mistake simulated data for
             measurement. */}
-        {simulated ? (
+        {allSimulated ? (
           <span className="chart-legend__key" style={{ color: palette.violet }}>
             Readings are simulated, not measured
+          </span>
+        ) : someSimulated ? (
+          <span className="chart-legend__key" style={{ color: palette.violet }}>
+            {simulatedCount} of {data.length} readings are simulated; the rest were entered manually
           </span>
         ) : null}
       </div>

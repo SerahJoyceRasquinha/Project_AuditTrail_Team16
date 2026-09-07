@@ -98,6 +98,36 @@ export const METRIC_DEFINITIONS = Object.freeze([
     formula: 'round((totalShipments - withBreaches) / totalShipments * 100)',
   },
   {
+    key: 'readingTemperatureCompliance',
+    label: 'Reading Compliance',
+    unit: '%',
+    plain:
+      'The share of individual temperature readings that were inside the agreed range. This is the figure that matches what you see on a shipment\u2019s chart: five readings with one breach is 80%, not 0%. Blank until at least one reading exists.',
+    technical:
+      'Percentage of recorded readings that were not breaches, summed across shipments from `temperatureReadingCount` and `temperatureBreachCount`. Deliberately distinct from overallTemperatureCompliance, which counts shipments; the two answer different questions and one must not be displayed under the other\u2019s name.',
+    formula: 'round((totalTemperatureReadings - breachReadings) / totalTemperatureReadings * 100)',
+  },
+  {
+    key: 'totalTemperatureReadings',
+    label: 'Temperature Readings',
+    unit: '',
+    plain:
+      'How many temperature readings have been recorded across all shipments, whether entered by hand or sampled by the monitor.',
+    technical:
+      'Sum of `temperatureReadingCount` across the read model. Every TEMPERATURE_RECORDED and TEMPERATURE_SPIKE event contributes exactly one.',
+    formula: 'sum(temperatureReadingCount)',
+  },
+  {
+    key: 'breachReadings',
+    label: 'Readings Outside Range',
+    unit: '',
+    plain:
+      'How many individual readings fell outside the agreed range, across all shipments. One shipment that went out of range three times contributes three.',
+    technical:
+      'Sum of `temperatureBreachCount` across the read model, which is the count of TEMPERATURE_SPIKE events. Distinct from Shipments with Breaches, which counts each affected shipment once.',
+    formula: 'sum(temperatureBreachCount)',
+  },
+  {
     key: 'withBreaches',
     label: 'Shipments with Breaches',
     unit: '',
@@ -195,9 +225,9 @@ export const CHART_DEFINITIONS = Object.freeze([
     title: 'Temperature Compliance',
     type: 'pie',
     plain:
-      'The split between shipments that stayed in range and those that did not. Read it as a proportion of shipments, not of readings.',
+      'The split between temperature readings that were inside the agreed range and those that were not. It counts readings, so it matches the reading and breach counts shown on a shipment\u2019s own chart.',
     technical:
-      'Two slices derived from overallTemperatureCompliance: the compliant percentage and its complement. It is a rendering of one number, not an independent measurement.',
+      'Two slices derived from readingTemperatureCompliance: the compliant percentage and its complement. It is a rendering of one number, not an independent measurement. When no readings exist the chart is suppressed rather than drawn as 0% compliant.',
   },
   {
     key: 'shipmentsByOrigin',

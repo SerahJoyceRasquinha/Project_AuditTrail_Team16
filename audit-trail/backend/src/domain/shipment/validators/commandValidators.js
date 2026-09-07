@@ -130,6 +130,24 @@ function optionalFiniteNumber(errors, object, field) {
  * always be compared, and the service refuses a value that would place an event
  * before its own predecessor.
  */
+/**
+ * How far ahead of the server clock a client-supplied `occurredAt` may sit.
+ * Wide enough for ordinary clock skew between a browser and this server,
+ * narrow enough that a mistyped year cannot enter the ledger.
+ */
+const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * `occurredAt` lets a client date an event to when it actually happened, which
+ * backfilling and seeding both need. It is bounded in one direction only.
+ *
+ * Backdating is legitimate; forward-dating is not. Events record what has
+ * already happened, and an event is permanent once appended: a single mistyped
+ * year would stretch the scrubber's range to meet it and, because the command
+ * service refuses any later event that would precede its predecessor, would
+ * block every honest reading recorded afterwards. The stream would be frozen
+ * with no way to undo it.
+ */
 function optionalOccurredAt(errors, input) {
   const value = input?.occurredAt;
   if (value === undefined || value === null || value === '') return null;
@@ -137,7 +155,16 @@ function optionalOccurredAt(errors, input) {
     errors.push({ field: 'occurredAt', message: "'occurredAt' must be an ISO-8601 timestamp when provided." });
     return null;
   }
-  return new Date(value).toISOString();
+  const iso = new Date(value).toISOString();
+  if (Date.parse(iso) - Date.now() > MAX_FUTURE_SKEW_MS) {
+    errors.push({
+      field: 'occurredAt',
+      message:
+        "'occurredAt' cannot be in the future. Events record what has already happened.",
+    });
+    return null;
+  }
+  return iso;
 }
 
 function throwIfAny(errors, message) {

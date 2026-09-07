@@ -346,3 +346,22 @@
 .basisItem strong {
   color: var(--muted, #5b6b7a);
 }
+
+/* Caption under a chart title: the raw counts the percentage is derived from,
+   so a reader can check the arithmetic without leaving the page. */
+.chartCaption {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+/* Shown instead of a chart when there is genuinely nothing to plot. An empty
+   state has to be distinguishable from a zero result. */
+.emptyChart {
+  margin: 0;
+  padding: 2rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  opacity: 0.75;
+  text-align: center;
+}

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import * as api from '../services/apiClient.js';
+import { useShipmentStream } from '../hooks/useShipmentStream.js';
 import { ErrorBlock, LoadingBlock } from './StatusBlocks.jsx';
 import { useChartPalette } from '../hooks/useTheme.js';
 import styles from '../styles/dashboard.module.css';
@@ -79,6 +80,14 @@ export function buildStateChartData(byState, colors) {
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
 
+  /**
+   * Every state the backend reports is kept, including the empty ones, so a
+   * state with no shipments is still accounted for rather than silently
+   * missing. Suppressing the *label* for a zero slice is handled at render
+   * time - see the `label` prop on the Pie - because a zero-area slice still
+   * gets a label from Recharts, and several of them land on the same point and
+   * overprint into an unreadable smear.
+   */
   return Object.entries(byState ?? {}).map(([name, value], index) => ({
     name: titleCase(name),
     value,
@@ -113,25 +122,52 @@ export function StatusDashboard() {
   const [exportingFormat, setExportingFormat] = useState(null);
   const [exportNotice, setExportNotice] = useState(null);
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await api.getDashboardMetrics();
-        setMetrics(data);
-      } catch (err) {
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  /**
+   * `loading` is only raised for the first fetch.
+   *
+   * A refresh triggered by someone recording a reading should update the
+   * numbers in place; tearing the dashboard down to a skeleton every time an
+   * event arrives makes it flicker and loses the reader's scroll position.
+   */
+  const loadedOnce = useRef(false);
 
+  const fetchMetrics = useCallback(async () => {
+    try {
+      if (!loadedOnce.current) setLoading(true);
+      setError(null);
+      const data = await api.getDashboardMetrics();
+      setMetrics(data);
+      loadedOnce.current = true;
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
     fetchMetrics();
-    // Refresh metrics every 30 seconds
+    // A slow backstop. The stream below is what makes this feel immediate; the
+    // poll is what keeps it correct when the stream is unavailable.
     const interval = setInterval(fetchMetrics, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchMetrics]);
+
+  /**
+   * Live updates.
+   *
+   * Recording a temperature changed the shipment page immediately but left this
+   * dashboard showing stale totals for up to thirty seconds, which reads as the
+   * metrics being disconnected from the readings. Subscribing to the same
+   * notification stream the ledger uses closes that gap without introducing a
+   * second source of truth: the notification only says something changed, and
+   * the response is to re-run the ordinary query.
+   */
+  useShipmentStream({
+    shipmentId: null,
+    enabled: true,
+    onNotification: () => fetchMetrics(),
+  });
 
   /**
    * The definitions are fetched once and never polled: they change when someone
@@ -215,10 +251,24 @@ export function StatusDashboard() {
     value,
   }));
 
-  const complianceData = [
-    { name: 'Compliant', value: metrics.overallTemperatureCompliance, color: COLORS.success },
-    { name: 'Breaches', value: 100 - metrics.overallTemperatureCompliance, color: COLORS.danger },
-  ];
+  /**
+   * The compliance pie is drawn from reading-level compliance, not
+   * shipment-level.
+   *
+   * It used to render overallTemperatureCompliance, which counts shipments: one
+   * shipment that breached once out of five readings made the chart read
+   * "Breaches: 100%" while that shipment's own page said "5 readings, 1
+   * breach". Both numbers were correct and the pair was indefensible. Readings
+   * are what the chart appears to be about, so readings are what it now shows.
+   */
+  const hasReadings = (metrics.totalTemperatureReadings ?? 0) > 0;
+  const readingCompliance = metrics.readingTemperatureCompliance;
+  const complianceData = hasReadings
+    ? [
+        { name: 'In range', value: readingCompliance, color: COLORS.success },
+        { name: 'Breached', value: 100 - readingCompliance, color: COLORS.danger },
+      ]
+    : [];
 
   return (
     <div className={styles.dashboard}>
@@ -322,9 +372,21 @@ export function StatusDashboard() {
           />
           <MetricCard
             colors={COLORS}
-            title="Temperature Compliance"
-            value={`${metrics.overallTemperatureCompliance}%`}
+            title="Reading Compliance"
+            value={readingCompliance === null || readingCompliance === undefined ? '—' : `${readingCompliance}%`}
             icon="❄️"
+            color={readingCompliance === null || readingCompliance === undefined ? 'primary' : readingCompliance >= 95 ? 'success' : 'warning'}
+            definition={definitionFor('readingTemperatureCompliance')}
+          />
+          <MetricCard
+            colors={COLORS}
+            title="Shipments Fully Compliant"
+            value={
+              metrics.overallTemperatureCompliance === null || metrics.overallTemperatureCompliance === undefined
+                ? '—'
+                : `${metrics.overallTemperatureCompliance}%`
+            }
+            icon="📦"
             color={metrics.overallTemperatureCompliance >= 95 ? 'success' : 'warning'}
             definition={definitionFor('overallTemperatureCompliance')}
           />
@@ -353,7 +415,7 @@ export function StatusDashboard() {
           <MetricCard
             colors={COLORS}
             title="Avg Breaches/Shipment"
-            value={metrics.avgBreachesPerShipment.toFixed(2)}
+            value={(metrics.avgBreachesPerShipment ?? 0).toFixed(2)}
             icon="📈"
             color="warning"
             definition={definitionFor('avgBreachesPerShipment')}
@@ -361,8 +423,8 @@ export function StatusDashboard() {
           <MetricCard
             colors={COLORS}
             title="Avg Delivery Time"
-            value={metrics.averageDeliveryTime}
-            unit=" days"
+            value={metrics.averageDeliveryTime === null || metrics.averageDeliveryTime === undefined ? '—' : metrics.averageDeliveryTime}
+            unit={metrics.averageDeliveryTime === null || metrics.averageDeliveryTime === undefined ? '' : ' days'}
             icon="⏱️"
             color="primary"
             definition={definitionFor('averageDeliveryTime')}
@@ -370,9 +432,15 @@ export function StatusDashboard() {
           <MetricCard
             colors={COLORS}
             title="On-Time Delivery Rate"
-            value={`${metrics.onTimeDeliveryRate}%`}
+            value={metrics.onTimeDeliveryRate === null || metrics.onTimeDeliveryRate === undefined ? '—' : `${metrics.onTimeDeliveryRate}%`}
             icon="✅"
-            color={metrics.onTimeDeliveryRate >= 90 ? 'success' : 'warning'}
+            color={
+              metrics.onTimeDeliveryRate === null || metrics.onTimeDeliveryRate === undefined
+                ? 'primary'
+                : metrics.onTimeDeliveryRate >= 90
+                  ? 'success'
+                  : 'warning'
+            }
             definition={definitionFor('onTimeDeliveryRate')}
           />
         </div>
@@ -393,7 +461,7 @@ export function StatusDashboard() {
                   cy="50%"
                   labelLine={false}
                   stroke={palette.surface}
-                  label={({ name, value }) => `${name}: ${value}`}
+                  label={({ name, value }) => (value > 0 ? `${name}: ${value}` : null)}
                   outerRadius={80}
                   fill={COLORS.info}
                   dataKey="value"
@@ -405,12 +473,20 @@ export function StatusDashboard() {
                 <Tooltip contentStyle={tooltipStyle(palette)} />
               </PieChart>
             </ResponsiveContainer>
+            <p className={styles.chartCaption}>
+              {stateData.map((slice) => `${slice.name}: ${slice.value}`).join(' · ')}
+            </p>
             <Explanation definition={chartFor('byState')} />
           </div>
 
           {/* Temperature Compliance */}
           <div className={styles.chartContainer}>
             <h3>Temperature Compliance</h3>
+            {hasReadings ? (
+            <>
+            <p className={styles.chartCaption}>
+              {metrics.totalTemperatureReadings} readings · {metrics.breachReadings} outside range
+            </p>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -431,6 +507,13 @@ export function StatusDashboard() {
                 <Tooltip formatter={(value) => `${value}%`} contentStyle={tooltipStyle(palette)} />
               </PieChart>
             </ResponsiveContainer>
+            </>
+            ) : (
+              <p className={styles.emptyChart}>
+                No temperature readings have been recorded yet, so there is nothing to measure
+                compliance against. This is not the same as 0% compliant.
+              </p>
+            )}
             <Explanation definition={chartFor('temperatureCompliance')} />
           </div>
         </div>

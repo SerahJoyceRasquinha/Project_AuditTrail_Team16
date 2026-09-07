@@ -279,3 +279,74 @@ test('a shipment with no declared thresholds cannot breach', async (t) => {
   assert.equal(metrics.withBreaches, 0);
   assert.equal(metrics.overallTemperatureCompliance, 100);
 });
+
+/**
+ * Reading-level vs shipment-level temperature compliance.
+ *
+ * A fourth defect, found the same way as the three above. The dashboard drew a
+ * pie labelled "Temperature Compliance" from `overallTemperatureCompliance`,
+ * which counts *shipments*. A single shipment that breached once out of five
+ * readings therefore rendered as "Breaches: 100%" while that shipment's own
+ * page simultaneously reported "5 readings, 1 breach". Both figures were
+ * correct; showing the shipment one under a heading a reader takes to mean
+ * readings was not.
+ */
+test('reading compliance counts readings, not shipments', async (t) => {
+  const { system, http } = await withServer(t);
+  const id = await createShipment(http, { minTemperatureC: 15, maxTemperatureC: 45 });
+
+  // Four readings in range, one above the ceiling.
+  let version = 1;
+  for (const celsius of [36, 24, 27, 42, 50]) {
+    const response = await http.post('/api/shipment/temperature', {
+      shipmentId: id,
+      temperatureC: celsius,
+      expectedVersion: version,
+    });
+    assert.equal(response.status, 200);
+    version += 1;
+  }
+
+  const metrics = await metricsOf(system, http);
+
+  assert.equal(metrics.totalTemperatureReadings, 5);
+  assert.equal(metrics.breachReadings, 1);
+  assert.equal(metrics.readingTemperatureCompliance, 80, 'four of five readings were in range');
+
+  // The shipment-level figure is still reported, and still means what it says.
+  assert.equal(metrics.withBreaches, 1);
+  assert.equal(metrics.overallTemperatureCompliance, 0, 'the one shipment did breach');
+});
+
+/**
+ * "No data yet" and "zero" must be distinguishable.
+ *
+ * Returning 0 for an unmeasured rate made the dashboard read as total failure -
+ * 0% compliant, 0% on time - for a fleet that had simply not done anything yet.
+ */
+test('unmeasured rates are null rather than zero', async (t) => {
+  const { system, http } = await withServer(t);
+  await createShipment(http);
+
+  const metrics = await metricsOf(system, http);
+
+  assert.equal(metrics.totalTemperatureReadings, 0);
+  assert.equal(metrics.readingTemperatureCompliance, null, 'no readings is not 0% compliant');
+  assert.equal(metrics.onTimeDeliveryRate, null, 'nothing delivered is not 0% on time');
+  assert.equal(metrics.averageDeliveryTime, null);
+});
+
+test('a manually recorded reading moves the fleet metrics', async (t) => {
+  const { system, http } = await withServer(t);
+  const id = await createShipment(http, { minTemperatureC: 2, maxTemperatureC: 8 });
+
+  const before = await metricsOf(system, http);
+  assert.equal(before.totalTemperatureReadings, 0);
+
+  await http.post('/api/shipment/temperature', { shipmentId: id, temperatureC: 5, expectedVersion: 1 });
+
+  const after = await metricsOf(system, http);
+  assert.equal(after.totalTemperatureReadings, 1);
+  assert.equal(after.breachReadings, 0);
+  assert.equal(after.readingTemperatureCompliance, 100);
+});

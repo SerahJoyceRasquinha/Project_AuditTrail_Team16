@@ -290,9 +290,19 @@ export function replay(events, { strict = true, initial = initialShipmentState }
         eventId: event.eventId,
       });
     }
-    if (event.version <= previousVersion) {
+    /**
+     * Versions must be contiguous, not merely ascending.
+     *
+     * Ascending alone accepted a stream with a hole in it: delete version 3
+     * and [1, 2, 4] still folded cleanly, returning a confident state that
+     * silently omitted whatever event 3 recorded. A gap means the history is
+     * incomplete, and an incomplete history must fail loudly rather than
+     * produce a plausible wrong answer. /integrity reports the same condition
+     * as VERSION_GAP; this makes the reconstruction path itself refuse it.
+     */
+    if (event.version !== previousVersion + 1) {
       throw new ValidationError(
-        `Events supplied to replay() are not in ascending version order (saw version ${event.version} after ${previousVersion}).`,
+        `Events supplied to replay() are not a contiguous version sequence (saw version ${event.version} after ${previousVersion}). The event stream is incomplete or out of order.`,
         { aggregateId: event.aggregateId, version: event.version, previousVersion }
       );
     }

@@ -481,9 +481,12 @@ export class DashboardMetricsQueryHandler {
       avgBreachesPerShipment: 0,
       shipmentsByOrigin: {},
       shipmentsByDestination: {},
-      averageDeliveryTime: 0,
-      onTimeDeliveryRate: 0,
-      overallTemperatureCompliance: 0,
+      averageDeliveryTime: null,
+      onTimeDeliveryRate: null,
+      overallTemperatureCompliance: null,
+      totalTemperatureReadings: 0,
+      breachReadings: 0,
+      readingTemperatureCompliance: null,
     };
 
     let completedShipments = 0;
@@ -501,6 +504,18 @@ export class DashboardMetricsQueryHandler {
         metrics.withBreaches++;
         metrics.totalBreaches += shipment.temperatureBreachCount;
       }
+
+      /**
+       * Readings, counted separately from shipments.
+       *
+       * A shipment-level rate answers 'how many shipments had any trouble';
+       * a reading-level rate answers 'how much of the monitoring was in
+       * range'. They are different questions and one must not be shown
+       * under the other's name: with a single shipment that breached once
+       * out of five readings, the first is 0% and the second is 80%.
+       */
+      metrics.totalTemperatureReadings += shipment.temperatureReadingCount ?? 0;
+      metrics.breachReadings += shipment.temperatureBreachCount ?? 0;
 
       // Origin/Destination breakdown
       if (shipment.origin) {
@@ -536,9 +551,21 @@ export class DashboardMetricsQueryHandler {
 
     if (allShipments.length > 0) {
       metrics.avgBreachesPerShipment = Math.round((metrics.totalBreaches / allShipments.length) * 100) / 100;
-      // Temperature compliance: (shipments without breaches / total) * 100
+      // Shipment-level: what share of shipments came through with no breach at all.
       metrics.overallTemperatureCompliance = Math.round(
         ((allShipments.length - metrics.withBreaches) / allShipments.length) * 100
+      );
+    }
+
+    /**
+     * Reading-level compliance is left null rather than 0 when nothing has
+     * been measured. Zero would read as 'every reading breached', which is
+     * the opposite of 'no readings yet', and a dashboard that cannot tell
+     * those apart is worse than one that admits it has no data.
+     */
+    if (metrics.totalTemperatureReadings > 0) {
+      metrics.readingTemperatureCompliance = Math.round(
+        ((metrics.totalTemperatureReadings - metrics.breachReadings) / metrics.totalTemperatureReadings) * 100
       );
     }
 

@@ -19,6 +19,7 @@ import { AuditLogToolbar, filterAuditEvents } from '../components/AuditLogToolba
 import { StateScrubber } from '../components/StateScrubber.jsx';
 import { SensorChart } from '../components/SensorChart.jsx';
 import { LifecyclePlanner } from '../components/LifecyclePlanner.jsx';
+import { TemperatureEntry } from '../components/TemperatureEntry.jsx';
 import {
   ConfirmDialog,
   ConflictDialog,
@@ -403,6 +404,28 @@ function ShipmentWorkspace({ shipmentId }) {
               )}
             </div>
           </ErrorBoundary>
+
+          <div className="panel">
+            <div className="panel__head">
+              <h2 className="panel__title">Record Temperature</h2>
+            </div>
+            <TemperatureEntry
+              shipmentId={shipmentId}
+              expectedVersion={live?.currentVersion}
+              minTemperatureC={live?.minTemperatureC ?? null}
+              maxTemperatureC={live?.maxTemperatureC ?? null}
+              disabled={!isOperator || store.isHistorical || isArchived || !live}
+              disabledReason={
+                !isOperator
+                  ? 'Your account has read-only access. Recording a reading requires an Operator account.'
+                  : isArchived
+                    ? 'This shipment is archived, so it accepts no further readings. Restore it to resume - its history is unchanged either way.'
+                    : 'Return to the live view before recording a reading. A command issued from a historical view would carry a version that is no longer current.'
+              }
+              onChanged={store.commandSucceeded}
+              onConflict={store.commandConflicted}
+            />
+          </div>
 
           <div className="panel">
             <div className="panel__head">
